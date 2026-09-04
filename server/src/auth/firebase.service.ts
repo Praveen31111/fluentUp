@@ -60,7 +60,22 @@ export class FirebaseService implements OnModuleInit {
       // Step 3: Check karein environment variables (.env)
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID') || 'fluentup-b8096';
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
-      const privateKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY')?.replace(/\\n/g, '\n');
+      let rawKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
+
+      if (rawKey) {
+        rawKey = rawKey.trim();
+        // Remove accidental surrounding double or single quotes if copied from .env
+        if (
+          (rawKey.startsWith('"') && rawKey.endsWith('"')) ||
+          (rawKey.startsWith("'") && rawKey.endsWith("'"))
+        ) {
+          rawKey = rawKey.slice(1, -1);
+        }
+        // Normalize literal \n into actual newline characters
+        rawKey = rawKey.replace(/\\n/g, '\n').trim();
+      }
+
+      const privateKey = rawKey;
 
       if (clientEmail && privateKey) {
         // .env credentials se initialize karna
