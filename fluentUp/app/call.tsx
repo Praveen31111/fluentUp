@@ -163,6 +163,42 @@ export default function CallScreen() {
               ? `${activePartner?.name || 'Partner'} is currently muted`
               : `${activePartner?.name || 'Partner'} is speaking...`}
           </Text>
+
+          {/* Partner Icebreaker Card (Address, Education, Hobbies) */}
+          <View style={styles.icebreakerCard}>
+            <View style={styles.icebreakerHeader}>
+              <MaterialIcons name="lightbulb" size={14} color={FluentColors.primary} />
+              <Text style={styles.icebreakerHeaderTitle}>PARTNER CONTEXT & HOBBIES</Text>
+            </View>
+
+            {/* Address & Education */}
+            <View style={styles.partnerMetaRow}>
+              {activePartner?.address ? (
+                <View style={styles.partnerMetaPill}>
+                  <MaterialIcons name="location-on" size={13} color={FluentColors.primary} />
+                  <Text style={styles.partnerMetaText}>{activePartner.address}</Text>
+                </View>
+              ) : null}
+
+              {activePartner?.education ? (
+                <View style={styles.partnerMetaPill}>
+                  <MaterialIcons name="school" size={13} color={FluentColors.tertiary} />
+                  <Text style={styles.partnerMetaText}>{activePartner.education}</Text>
+                </View>
+              ) : null}
+            </View>
+
+            {/* Hobbies chips */}
+            {activePartner?.hobbies && activePartner.hobbies.length > 0 ? (
+              <View style={styles.partnerHobbiesWrap}>
+                {activePartner.hobbies.slice(0, 4).map((h, i) => (
+                  <View key={i} style={styles.partnerHobbyTag}>
+                    <Text style={styles.partnerHobbyTagText}>{h}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
         </View>
 
         {/* Bottom Floating Control Dock */}
@@ -458,5 +494,71 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: FluentColors.secondaryText,
     fontWeight: '500',
+  },
+  icebreakerCard: {
+    marginTop: 14,
+    backgroundColor: FluentColors.surfaceLowest,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '94%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: FluentColors.surfaceContainer,
+  },
+  icebreakerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  icebreakerHeaderTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    color: FluentColors.secondaryText,
+  },
+  partnerMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  partnerMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: FluentColors.surfaceContainerLow,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  partnerMetaText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: FluentColors.text,
+  },
+  partnerHobbiesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  partnerHobbyTag: {
+    backgroundColor: FluentColors.primaryFixed,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  partnerHobbyTagText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: FluentColors.primary,
   },
 });

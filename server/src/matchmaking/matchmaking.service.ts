@@ -126,6 +126,10 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       username: user.username,
       level: user.level,
       joinedAt: Date.now(),
+      photoUrl: (user as any).photoUrl || null,
+      address: (user as any).address || null,
+      education: (user as any).education || null,
+      hobbies: (user as any).hobbies || [],
     };
 
     // Step 4: Queue mein pehle se maujood users ke saath match dhoondhna
@@ -308,6 +312,10 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         id: learnerB.userId,
         name: learnerB.username,
         level: learnerB.level,
+        photoUrl: learnerB.photoUrl || null,
+        address: learnerB.address || null,
+        education: learnerB.education || null,
+        hobbies: learnerB.hobbies || [],
       },
     };
 
@@ -320,6 +328,10 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         id: learnerA.userId,
         name: learnerA.username,
         level: learnerA.level,
+        photoUrl: learnerA.photoUrl || null,
+        address: learnerA.address || null,
+        education: learnerA.education || null,
+        hobbies: learnerA.hobbies || [],
       },
     };
 

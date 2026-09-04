@@ -13,6 +13,10 @@ export interface QueuedLearner {
   username: string;        // Display name
   level: FluencyLevel;     // CEFR level (B1, B2, C1)
   joinedAt: number;        // Epoch timestamp (Date.now())
+  photoUrl?: string | null;// Student photo / avatar
+  address?: string | null; // Student city / location
+  education?: string | null;// Student education / college
+  hobbies?: string[];      // Student hobbies tags
 }
 
 // Successful match hone par return hone wala data
@@ -24,6 +28,10 @@ export interface MatchResult {
     id: string;            // Partner user ID
     name: string;          // Partner display name
     level: string;         // Partner CEFR level
+    photoUrl?: string | null;
+    address?: string | null;
+    education?: string | null;
+    hobbies?: string[];
   };
 }
 

@@ -31,6 +31,11 @@ model User {
   totalSessions   Int            @default(0)       // Completed oral conversation count
   totalMinutes    Int            @default(0)       // Spoken practice minutes
   topTopic        String?        @default("Daily Routines & Urban Travel")
+  address         String?        // Student city / location (e.g. New Delhi, India)
+  education       String?        // Student college / degree / stream (e.g. B.Tech Computer Science)
+  hobbies         String[]       @default([]) // Student hobbies list (e.g. ["Cricket", "Coding", "Music"])
+  bio             String?        // Optional short bio
+  photoUrl        String?        // Optional avatar or profile photo URL
   isBlocked       Boolean        @default(false)   // Moderation ban flag
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt

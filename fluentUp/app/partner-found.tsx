@@ -87,12 +87,31 @@ export default function PartnerFoundScreen() {
             <Text style={styles.levelDesc}>Fluent Speaker</Text>
           </View>
 
-          {/* Location & Learning history */}
+          {/* Location & Education Info */}
           <View style={styles.locationRow}>
-            <MaterialIcons name="location-on" size={15} color={FluentColors.secondaryText} />
-            <Text style={styles.locationText}>{activePartner?.location || 'Live Online'}</Text>
-            <Text style={styles.locationText}>• Ready to practice</Text>
+            <MaterialIcons name="location-on" size={15} color={FluentColors.primary} />
+            <Text style={styles.locationText}>
+              {activePartner?.address || activePartner?.location || 'Live Online'}
+            </Text>
+            {activePartner?.education ? (
+              <>
+                <Text style={styles.locationText}>•</Text>
+                <MaterialIcons name="school" size={15} color={FluentColors.tertiary} />
+                <Text style={styles.locationText}>{activePartner.education}</Text>
+              </>
+            ) : null}
           </View>
+
+          {/* Partner Hobbies Tags */}
+          {activePartner?.hobbies && activePartner.hobbies.length > 0 ? (
+            <View style={styles.partnerHobbiesWrap}>
+              {activePartner.hobbies.slice(0, 4).map((h, i) => (
+                <View key={i} style={styles.partnerHobbyTag}>
+                  <Text style={styles.partnerHobbyTagText}>{h}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
 
           {/* Common Ground / Shared Conversation Starter */}
           <View style={styles.topicCard}>
@@ -344,5 +363,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: FluentColors.secondaryText,
+  },
+  partnerHobbiesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginVertical: 10,
+    paddingHorizontal: 8,
+  },
+  partnerHobbyTag: {
+    backgroundColor: FluentColors.surfaceLowest,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: FluentColors.surfaceContainer,
+  },
+  partnerHobbyTagText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: FluentColors.text,
   },
 });

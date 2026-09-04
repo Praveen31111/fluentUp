@@ -29,14 +29,22 @@ export class AuthController {
 
   /**
    * PATCH /api/auth/profile
-   * User apna display name change kar sakta hai.
+   * User apna profile details (username, address, education, hobbies, bio, photoUrl) update kar sakta hai.
    */
   @Patch('profile')
   @UseGuards(FirebaseAuthGuard)
   updateProfile(
     @CurrentUser() user: User,
-    @Body('username') newUsername: string,
+    @Body()
+    dto: {
+      username?: string;
+      address?: string;
+      education?: string;
+      hobbies?: string[];
+      bio?: string;
+      photoUrl?: string;
+    },
   ) {
-    return this.authService.updateUsername(user.id, newUsername);
+    return this.authService.updateProfile(user.id, dto);
   }
 }

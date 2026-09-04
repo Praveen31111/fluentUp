@@ -54,12 +54,22 @@ export const AuthApi = {
     return fetchApi<any>('/auth/me', { token });
   },
 
-  // Display name update karna
-  updateProfile: async (token: string, username: string) => {
+  // Profile update karna (address, education, hobbies, bio, username)
+  updateProfile: async (
+    token: string,
+    data: {
+      username?: string;
+      address?: string;
+      education?: string;
+      hobbies?: string[];
+      bio?: string;
+      photoUrl?: string;
+    },
+  ) => {
     return fetchApi<any>('/auth/profile', {
       method: 'PATCH',
       token,
-      body: { username },
+      body: data,
     });
   },
 };

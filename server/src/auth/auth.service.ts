@@ -26,17 +26,39 @@ export class AuthService {
       totalSessions: user.totalSessions,
       totalMinutes: user.totalMinutes,
       topTopic: user.topTopic,
+      address: user.address,
+      education: user.education,
+      hobbies: user.hobbies,
+      bio: user.bio,
+      photoUrl: user.photoUrl,
       createdAt: user.createdAt,
     };
   }
 
   /**
-   * User ka display name update karne ke liye
+   * User ka profile (name, address, education, hobbies, bio, photo) update karne ke liye
    */
-  async updateUsername(userId: string, newUsername: string) {
+  async updateProfile(
+    userId: string,
+    data: {
+      username?: string;
+      address?: string;
+      education?: string;
+      hobbies?: string[];
+      bio?: string;
+      photoUrl?: string;
+    },
+  ) {
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: { username: newUsername.trim() },
+      data: {
+        ...(data.username ? { username: data.username.trim() } : {}),
+        ...(data.address !== undefined ? { address: data.address?.trim() || null } : {}),
+        ...(data.education !== undefined ? { education: data.education?.trim() || null } : {}),
+        ...(data.hobbies !== undefined ? { hobbies: data.hobbies } : {}),
+        ...(data.bio !== undefined ? { bio: data.bio?.trim() || null } : {}),
+        ...(data.photoUrl !== undefined ? { photoUrl: data.photoUrl?.trim() || null } : {}),
+      },
     });
     return this.getProfile(updated);
   }

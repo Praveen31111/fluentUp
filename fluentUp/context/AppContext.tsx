@@ -29,6 +29,11 @@ export interface UserProfile {
   totalSessions: number;            // Total completed oral speaking sessions
   totalMinutes: number;             // Total spoken minutes
   topTopic: string;                 // Most spoken conversation category
+  address?: string;                 // Student city / location (e.g. New Delhi, India)
+  education?: string;               // Student college / degree (e.g. B.Tech Computer Science)
+  hobbies?: string[];               // Student hobbies (e.g. ["Cricket", "Coding", "Music"])
+  bio?: string;                     // Short bio
+  photoUrl?: string;                // Photo URI (saved locally on device, not in database!)
 }
 
 // Assessment Question Model
@@ -52,6 +57,9 @@ export interface SpeakingPartner {
   roomName?: string;
   callId?: string;
   durationInCall: number;
+  address?: string;                 // Partner's city / location
+  education?: string;               // Partner's college / education
+  hobbies?: string[];               // Partner's hobbies list
 }
 
 // Full Context Type Definition
@@ -64,6 +72,14 @@ interface AppContextType {
   signupUser: (email: string) => Promise<void>;
   verifyEmail: () => void;
   logoutUser: () => void;
+  updateUserProfile: (data: {
+    username?: string;
+    address?: string;
+    education?: string;
+    hobbies?: string[];
+    bio?: string;
+    photoUrl?: string;
+  }) => Promise<boolean>;
 
   // Assessment Gate Engine
   questions: AssessmentQuestion[];
@@ -216,6 +232,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     totalSessions: 12,
     totalMinutes: 86,
     topTopic: 'Daily Routines & Urban Travel',
+    address: 'New Delhi, India',
+    education: 'B.Tech Computer Science',
+    hobbies: ['Coding', 'Cricket', 'Traveling', 'Podcasts'],
+    bio: 'Aspiring software developer practicing professional English fluency.',
+    photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
   });
 
   // 2. Assessment State
@@ -255,18 +276,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         username: 'Praveen Kumar',
         email: 'praveen@fluentup.dev',
         level: 'C1' as FluencyLevel,
+        address: 'New Delhi, India',
+        education: 'B.Tech Computer Science',
+        hobbies: ['Coding', 'Cricket', 'Traveling', 'Podcasts'],
+        bio: 'Aspiring software engineer passionate about conversations.',
+        photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
       },
       rahul: {
         username: 'Rahul Sharma',
         email: 'rahul@fluentup.dev',
         level: 'C1' as FluencyLevel,
+        address: 'Bengaluru, India',
+        education: 'MBA Marketing',
+        hobbies: ['Badminton', 'Startups', 'Reading', 'Chess'],
+        bio: 'Product enthusiast passionate about tech startups and spoken clarity.',
+        photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
       },
       priya: {
         username: 'Priya Patel',
         email: 'priya@fluentup.dev',
         level: 'C1' as FluencyLevel,
+        address: 'Mumbai, India',
+        education: 'M.A. English Literature',
+        hobbies: ['Creative Writing', 'Music', 'Photography', 'Yoga'],
+        bio: 'Language lover exploring cross-cultural conversations and literature.',
+        photoUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80',
       },
     };
+
+    // User ka local photo device storage se load karein (Database mein nahi rakha jata)
+    let localPhoto: string | null = null;
+    try {
+      localPhoto = await AsyncStorage.getItem(`fluentup_user_photo_${persona}`);
+    } catch (e) {
+      // Ignored
+    }
 
     const remoteUser = await AuthApi.getMe(token);
     if (remoteUser) {
@@ -281,6 +325,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalSessions: remoteUser.totalSessions || 0,
         totalMinutes: remoteUser.totalMinutes || 0,
         topTopic: remoteUser.topTopic || 'Daily Routines',
+        address: remoteUser.address || defaultProfiles[persona].address,
+        education: remoteUser.education || defaultProfiles[persona].education,
+        hobbies: (remoteUser.hobbies && remoteUser.hobbies.length > 0) ? remoteUser.hobbies : defaultProfiles[persona].hobbies,
+        bio: remoteUser.bio || defaultProfiles[persona].bio,
+        photoUrl: localPhoto || remoteUser.photoUrl || defaultProfiles[persona].photoUrl,
       });
     } else {
       setUser({
@@ -294,6 +343,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalSessions: 8,
         totalMinutes: 64,
         topTopic: 'Everyday English & Conversations',
+        address: defaultProfiles[persona].address,
+        education: defaultProfiles[persona].education,
+        hobbies: defaultProfiles[persona].hobbies,
+        bio: defaultProfiles[persona].bio,
+        photoUrl: localPhoto || defaultProfiles[persona].photoUrl,
       });
     }
   };
@@ -315,6 +369,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     restorePersona();
   }, []);
+
+  // Profile Update Handler (Photo saved locally on phone, text details saved in Database)
+  const updateUserProfile = async (data: {
+    username?: string;
+    address?: string;
+    education?: string;
+    hobbies?: string[];
+    bio?: string;
+    photoUrl?: string;
+  }): Promise<boolean> => {
+    try {
+      // 1. Mobile se upload hui photo ko phone ki local storage mein save karein (Zero DB overhead)
+      if (data.photoUrl) {
+        await AsyncStorage.setItem(`fluentup_user_photo_${currentPersona}`, data.photoUrl);
+      }
+
+      // 2. Database mein sirf text details save karein (Address, Education, Hobbies, Bio, Username)
+      await AuthApi.updateProfile(authToken, {
+        username: data.username,
+        address: data.address,
+        education: data.education,
+        hobbies: data.hobbies,
+        bio: data.bio,
+      });
+
+      // 3. React context state ko instantly update karein
+      setUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          username: data.username !== undefined ? data.username : prev.username,
+          address: data.address !== undefined ? data.address : prev.address,
+          education: data.education !== undefined ? data.education : prev.education,
+          hobbies: data.hobbies !== undefined ? data.hobbies : prev.hobbies,
+          bio: data.bio !== undefined ? data.bio : prev.bio,
+          photoUrl: data.photoUrl !== undefined ? data.photoUrl : prev.photoUrl,
+        };
+      });
+
+      return true;
+    } catch (e) {
+      console.warn('Error updating profile:', e);
+      return false;
+    }
+  };
 
   // App Mount: Fetch live questions from Neon DB
   useEffect(() => {
@@ -355,19 +454,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? rawName.replace('Learner ', '').charAt(0).toUpperCase() + rawName.replace('Learner ', '').slice(1)
             : rawName;
 
-          const partnerAvatar = partnerDisplayName.toLowerCase().includes('rahul')
+          const partnerAvatar = res.match.partner.photoUrl || (partnerDisplayName.toLowerCase().includes('rahul')
             ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80'
             : partnerDisplayName.toLowerCase().includes('priya')
             ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80'
             : partnerDisplayName.toLowerCase().includes('praveen')
             ? 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80';
+            : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80');
+
+          const partnerLocation = res.match.partner.address || 'Live Online';
+          const partnerEducation = res.match.partner.education || 'Undergraduate Student';
+          const partnerHobbies = (res.match.partner.hobbies && res.match.partner.hobbies.length > 0)
+            ? res.match.partner.hobbies
+            : ['English Practice', 'Traveling', 'Podcasts'];
 
           const matchedPartner: SpeakingPartner = {
             id: res.match.partner.id,
             name: partnerDisplayName,
             level: `${res.match.partner.level || 'C1'} · Fluent`,
-            location: 'Online Learner',
+            location: partnerLocation,
+            address: partnerLocation,
+            education: partnerEducation,
+            hobbies: partnerHobbies,
             avatar: partnerAvatar,
             sharedTopic: res.match.topic || 'Daily routines & natural flow',
             roomName: res.match.roomName,
@@ -645,6 +753,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         signupUser,
         verifyEmail,
         logoutUser,
+        updateUserProfile,
 
         currentPersona,
         switchPersona,
