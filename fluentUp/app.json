@@ -40,6 +40,13 @@
       "expo-router",
       "@config-plugins/react-native-webrtc",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FluentUp to access your photos to set your profile picture.",
+          "cameraPermission": "Allow FluentUp to access your camera to take a profile picture."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

@@ -7,23 +7,20 @@
 
 import { Platform } from 'react-native';
 
+// Production Cloud Backend (Render.com)
+const CLOUD_BACKEND_URL = 'https://fluentup-backend.onrender.com';
+
 // Local Wi-Fi IP address (physical Android/iOS phone testing ke liye)
-// Agar aap phone par Expo Go use kar rahe hain toh yeh IP address
-// aapke phone ko aapke computer ke server se connect karega.
 const DEV_MACHINE_IP = '10.212.115.138';
 
-// Android Emulator: 10.0.2.2 points to host machine localhost
-// Physical Device: DEV_MACHINE_IP
-// Web: localhost
-export const API_BASE_URL = Platform.select({
-  android: `http://${DEV_MACHINE_IP}:3000/api`,
-  ios: `http://${DEV_MACHINE_IP}:3000/api`,
-  default: 'http://localhost:3000/api',
-});
+// Set to true agar local machine server se test karna ho, false for live cloud backend
+const USE_LOCAL_SERVER = false;
+
+const BASE_SERVER_URL = USE_LOCAL_SERVER ? `http://${DEV_MACHINE_IP}:3000` : CLOUD_BACKEND_URL;
+
+// HTTP API Base URL
+export const API_BASE_URL = `${BASE_SERVER_URL}/api`;
 
 // WebSocket Server URL (Signaling Gateway)
-export const WS_BASE_URL = Platform.select({
-  android: `http://${DEV_MACHINE_IP}:3000`,
-  ios: `http://${DEV_MACHINE_IP}:3000`,
-  default: 'http://localhost:3000',
-});
+export const WS_BASE_URL = BASE_SERVER_URL;
+

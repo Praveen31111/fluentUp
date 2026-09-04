@@ -35,6 +35,7 @@ export class FirebaseService implements OnModuleInit {
   }
 
   private initializeFirebase() {
+    let rawKey: string | undefined;
     try {
       // Step 1: Check karein agar already initialized hai
       if (getApps().length > 0) {
@@ -60,22 +61,33 @@ export class FirebaseService implements OnModuleInit {
       // Step 3: Check karein environment variables (.env)
       const projectId = this.configService.get<string>('FIREBASE_PROJECT_ID') || 'fluentup-b8096';
       const clientEmail = this.configService.get<string>('FIREBASE_CLIENT_EMAIL');
-      let rawKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
+      rawKey = this.configService.get<string>('FIREBASE_PRIVATE_KEY');
+      let privateKey: string | null = null;
 
       if (rawKey) {
-        rawKey = rawKey.trim();
-        // Remove accidental surrounding double or single quotes if copied from .env
-        if (
-          (rawKey.startsWith('"') && rawKey.endsWith('"')) ||
-          (rawKey.startsWith("'") && rawKey.endsWith("'"))
-        ) {
-          rawKey = rawKey.slice(1, -1);
-        }
-        // Normalize literal \n into actual newline characters and strip carriage returns
-        rawKey = rawKey.replace(/\\r/g, '').replace(/\r/g, '').replace(/\\n/g, '\n').trim();
-      }
+        // PEM block ke start aur end ko pinpoint karein (kisi bhi surrounding quotes/garbage ko ignore karein)
+        const b = rawKey.indexOf('-----BEGIN PRIVATE KEY-----');
+        const e = rawKey.indexOf('-----END PRIVATE KEY-----');
 
-      const privateKey = rawKey;
+        if (b !== -1 && e !== -1) {
+          privateKey = rawKey
+            .substring(b, e + '-----END PRIVATE KEY-----'.length)
+            .replace(/\\r/g, '')
+            .replace(/\r/g, '')
+            .replace(/\\n/g, '\n')
+            .trim();
+        } else {
+          // Fallback cleanup
+          rawKey = rawKey.trim();
+          if (
+            (rawKey.startsWith('"') && rawKey.endsWith('"')) ||
+            (rawKey.startsWith("'") && rawKey.endsWith("'"))
+          ) {
+            rawKey = rawKey.slice(1, -1);
+          }
+          privateKey = rawKey.replace(/\\r/g, '').replace(/\r/g, '').replace(/\\n/g, '\n').trim();
+        }
+      }
 
       if (clientEmail && privateKey) {
         // .env credentials se initialize karna (supports both camelCase and snake_case)
@@ -100,7 +112,9 @@ export class FirebaseService implements OnModuleInit {
       );
       this.isMockMode = true;
     } catch (error) {
-      this.logger.error('❌ Firebase Admin initialization failed:', error);
+      this.logger.error(
+        `❌ Firebase Admin initialization failed: ${error.message} (Key length: ${rawKey?.length || 0})`,
+      );
       this.isMockMode = true;
     }
   }
