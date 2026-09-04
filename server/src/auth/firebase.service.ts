@@ -71,20 +71,23 @@ export class FirebaseService implements OnModuleInit {
         ) {
           rawKey = rawKey.slice(1, -1);
         }
-        // Normalize literal \n into actual newline characters
-        rawKey = rawKey.replace(/\\n/g, '\n').trim();
+        // Normalize literal \n into actual newline characters and strip carriage returns
+        rawKey = rawKey.replace(/\\r/g, '').replace(/\r/g, '').replace(/\\n/g, '\n').trim();
       }
 
       const privateKey = rawKey;
 
       if (clientEmail && privateKey) {
-        // .env credentials se initialize karna
+        // .env credentials se initialize karna (supports both camelCase and snake_case)
         this.firebaseApp = initializeApp({
           credential: cert({
             projectId,
             clientEmail,
             privateKey,
-          }),
+            project_id: projectId,
+            client_email: clientEmail,
+            private_key: privateKey,
+          } as any),
           projectId,
         });
         this.logger.log(`✅ Firebase Admin initialized for project: ${projectId}`);
