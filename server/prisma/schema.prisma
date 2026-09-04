@@ -1,0 +1,170 @@
+// ========================================================
+// FluentUp - Prisma Database Schema
+// ========================================================
+// Yeh file PostgreSQL database ka structure define karti hai:
+// 1. Users & CEFR Levels
+// 2. Assessment Questions & Secure Server-Side Attempts
+// 3. Audio Calls & Matchmaking Metadata
+// 4. Feedback & User Safety (Reports & Blocks)
+// ========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --------------------------------------------------------
+// 1. Users Table (Core identity & practice records)
+// --------------------------------------------------------
+model User {
+  id              String         @id @default(uuid())
+  firebaseUid     String         @unique // Firebase ID Token se verify hone wali UID
+  email           String         @unique // User email
+  username        String         // Display name
+  level           FluencyLevel   @default(PENDING) // CEFR verified level (B1, B2, C1)
+  assessmentScore Int            @default(0)       // 0 to 100 percentage
+  approvalStatus  ApprovalStatus @default(PENDING) // PENDING -> APPROVED (ya REJECTED agar beginner ho)
+  totalSessions   Int            @default(0)       // Completed oral conversation count
+  totalMinutes    Int            @default(0)       // Spoken practice minutes
+  topTopic        String?        @default("Daily Routines & Urban Travel")
+  isBlocked       Boolean        @default(false)   // Moderation ban flag
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Relations
+  assessments     AssessmentAttempt[]
+  callsAsUserA    Call[]             @relation("CallUserA")
+  callsAsUserB    Call[]             @relation("CallUserB")
+  feedbackGiven   CallFeedback[]     @relation("FeedbackAuthor")
+  reportsFiled    Report[]           @relation("ReportAuthor")
+  reportsReceived Report[]           @relation("ReportTarget")
+  blockedUsers    BlockedUser[]      @relation("BlockInitiator")
+  blockedBy       BlockedUser[]      @relation("BlockedTarget")
+
+  @@map("users")
+}
+
+// CEFR Fluency Levels
+enum FluencyLevel {
+  PENDING
+  A1
+  A2
+  B1
+  B2
+  C1
+  C2
+}
+
+// Approval Gating Status
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// --------------------------------------------------------
+// 2. Assessment Models (Anti-Cheat Server-Side Evaluation)
+// --------------------------------------------------------
+model AssessmentQuestion {
+  id           Int      @id @default(autoincrement())
+  category     String   // Idiomatic, Phrasal, Polite Disagreement
+  prompt       String   // Question title / sentence to evaluate
+  instruction  String   // Helpful guidance
+  options      String[] // 3 natural options (Client ko ye options milte hain)
+  correctIndex Int      // Correct index (SERVER-ONLY! Client ko kabhi nahi milega)
+  difficulty   String   // B1, B2, C1
+  isActive     Boolean  @default(true)
+
+  @@map("assessment_questions")
+}
+
+model AssessmentAttempt {
+  id            String       @id @default(uuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score         Int          // Achieved score (0 - 100%)
+  assignedLevel FluencyLevel // Computed CEFR Level
+  passed        Boolean      // true if score >= 50% (B1+)
+  answersJson   Json         // User ke submitted option indices ka snapshot
+  createdAt     DateTime     @default(now())
+
+  @@map("assessment_attempts")
+}
+
+// --------------------------------------------------------
+// 3. Audio Calls Table (Session records)
+// --------------------------------------------------------
+model Call {
+  id              String         @id @default(uuid())
+  userAId         String
+  userBId         String
+  userA           User           @relation("CallUserA", fields: [userAId], references: [id])
+  userB           User           @relation("CallUserB", fields: [userBId], references: [id])
+  roomName        String         @unique // Unique room channel ID (e.g. call_82jd92)
+  matchedLevel    FluencyLevel   // Level at which match happened
+  sharedTopic     String         // Conversation starter topic
+  startedAt       DateTime       @default(now())
+  endedAt         DateTime?
+  durationSeconds Int            @default(0)
+  status          CallStatus     @default(ACTIVE)
+
+  feedbacks       CallFeedback[]
+
+  @@map("calls")
+}
+
+enum CallStatus {
+  ACTIVE
+  COMPLETED
+  DISCONNECTED
+  CANCELLED
+}
+
+// --------------------------------------------------------
+// 4. Session Feedback Table
+// --------------------------------------------------------
+model CallFeedback {
+  id          String   @id @default(uuid())
+  callId      String
+  call        Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  rating      Int      // 1 to 5 stars
+  flowQuality String   // "great", "somewhat", "nomatch"
+  createdAt   DateTime @default(now())
+
+  @@map("call_feedbacks")
+}
+
+// --------------------------------------------------------
+// 5. Abuse Protection & Safety Tables
+// --------------------------------------------------------
+model Report {
+  id           String   @id @default(uuid())
+  reporterId   String
+  reporter     User     @relation("ReportAuthor", fields: [reporterId], references: [id])
+  targetUserId String
+  targetUser   User     @relation("ReportTarget", fields: [targetUserId], references: [id])
+  callId       String?
+  reason       String
+  status       String   @default("PENDING") // PENDING, REVIEWED, RESOLVED
+  createdAt    DateTime @default(now())
+
+  @@map("reports")
+}
+
+model BlockedUser {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation("BlockInitiator", fields: [userId], references: [id])
+  blockedUserId String
+  blockedUser   User     @relation("BlockedTarget", fields: [blockedUserId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, blockedUserId])
+  @@map("blocked_users")
+}

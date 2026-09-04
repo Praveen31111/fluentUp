@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "331335207670",
+    "project_id": "fluentup-b8096",
+    "storage_bucket": "fluentup-b8096.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:331335207670:android:714a6b874927c9ae5cfad7",
+        "android_client_info": {
+          "package_name": "com.fluentUp.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "331335207670-nlk16qar815v65v79llmclmrq5qhgeso.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fluentUp.app",
+            "certificate_hash": "b15fe7bc2162644f09db8c4ecf8c341ab53253be"
+          }
+        },
+        {
+          "client_id": "331335207670-3783qpl077c129t63jmtu73g3flg49hg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbyMsN_2p4CrWTlzo0hNo8EfhnMXJ0PKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "331335207670-3783qpl077c129t63jmtu73g3flg49hg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
