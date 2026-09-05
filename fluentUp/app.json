@@ -32,7 +32,6 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.CAMERA",
-        "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK",
         "android.permission.BLUETOOTH"
       ]
@@ -44,6 +43,7 @@
     "plugins": [
       "expo-router",
       "@config-plugins/react-native-webrtc",
+      "@react-native-google-signin/google-signin",
       [
         "expo-image-picker",
         {

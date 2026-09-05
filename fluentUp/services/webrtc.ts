@@ -10,6 +10,8 @@
 // 6. Expo Go development fallback support karti hai
 // ========================================================
 
+import { PermissionsAndroid, Platform } from 'react-native';
+import { Audio } from 'expo-av';
 import { callSocketService } from './socket';
 
 // Safe dynamic WebRTC loading (Expo Go vs Development Build)
@@ -40,6 +42,7 @@ const ICE_CONFIG = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
   ],
 };
 
@@ -57,7 +60,7 @@ class WebRTCService {
   /**
    * 1. Request Microphone Permission & Capture Local Audio Stream
    * ------------------------------------------------------------
-   * Phone OS se audio recording permission mangta hai aur mic stream initialize karta hai.
+   * Android runtime audio permission mangta hai aur mic stream initialize karta hai.
    */
   async startLocalAudio(): Promise<any> {
     if (!this.isNativeSupported || !mediaDevicesInstance) {
@@ -68,12 +71,39 @@ class WebRTCService {
     }
 
     try {
+      // 1. Android runtime dangerous permission request (Android 10/11/12/13/14/15)
+      if (Platform.OS === 'android') {
+        const hasPermission = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+        );
+        if (!hasPermission) {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+            {
+              title: 'Microphone Permission',
+              message:
+                'FluentUp requires microphone access to let you speak with your English practice partner.',
+              buttonPositive: 'Allow',
+              buttonNegative: 'Deny',
+            },
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            console.warn('❌ User denied microphone permission on Android!');
+            return null;
+          }
+        }
+      }
+
       // Release any lingering past audio streams
       this.stopLocalAudio();
 
       // Request hardware microphone access (audio only, no video)
       const stream = await mediaDevicesInstance.getUserMedia({
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video: false,
       });
 
@@ -132,6 +162,24 @@ class WebRTCService {
         }
       };
 
+      // Candidate queue to avoid race condition before remote description is set
+      const pendingCandidates: any[] = [];
+      let isRemoteDescriptionSet = false;
+
+      const drainCandidates = async () => {
+        isRemoteDescriptionSet = true;
+        while (pendingCandidates.length > 0) {
+          const cand = pendingCandidates.shift();
+          try {
+            if (this.peerConnection && cand && RTCIceCandidateClass) {
+              await this.peerConnection.addIceCandidate(new RTCIceCandidateClass(cand));
+            }
+          } catch (err: any) {
+            console.warn('Error draining candidate:', err);
+          }
+        }
+      };
+
       // 5. ICE Candidate generator & relay to signaling server
       (pc as any).onicecandidate = (event: any) => {
         if (event.candidate) {
@@ -142,8 +190,12 @@ class WebRTCService {
       // 6. Incoming ICE Candidate listener
       callSocketService.onIceCandidate(async ({ candidate }) => {
         try {
-          if (this.peerConnection && candidate && RTCIceCandidateClass) {
-            await this.peerConnection.addIceCandidate(new RTCIceCandidateClass(candidate));
+          if (candidate && RTCIceCandidateClass) {
+            if (this.peerConnection && isRemoteDescriptionSet) {
+              await this.peerConnection.addIceCandidate(new RTCIceCandidateClass(candidate));
+            } else {
+              pendingCandidates.push(candidate);
+            }
           }
         } catch (e: any) {
           console.warn('Could not add ICE candidate:', e.message);
@@ -156,6 +208,7 @@ class WebRTCService {
           if (this.peerConnection && sdp && RTCSessionDescriptionClass) {
             console.log('📥 Setting remote description from Answer...');
             await this.peerConnection.setRemoteDescription(new RTCSessionDescriptionClass(sdp));
+            await drainCandidates();
           }
         } catch (e: any) {
           console.error('Error handling answer SDP:', e.message);
@@ -168,6 +221,7 @@ class WebRTCService {
           if (this.peerConnection && sdp && RTCSessionDescriptionClass) {
             console.log('📥 Setting remote description from Offer & creating Answer...');
             await this.peerConnection.setRemoteDescription(new RTCSessionDescriptionClass(sdp));
+            await drainCandidates();
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             callSocketService.sendAnswer(roomName, answer);
@@ -177,15 +231,24 @@ class WebRTCService {
         }
       });
 
-      // 9. If caller, generate and emit SDP Offer
+      // 9. If caller, generate and emit SDP Offer after slight delay to ensure peer socket is ready
       if (isCaller) {
-        console.log('📤 Generating SDP Offer as caller...');
-        const offer = await this.peerConnection.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: false,
-        });
-        await this.peerConnection.setLocalDescription(offer);
-        callSocketService.sendOffer(roomName, offer);
+        const sendOffer = async () => {
+          try {
+            console.log('📤 Generating SDP Offer as caller...');
+            const offer = await this.peerConnection.createOffer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: false,
+            });
+            await this.peerConnection.setLocalDescription(offer);
+            callSocketService.sendOffer(roomName, offer);
+          } catch (err: any) {
+            console.error('❌ Failed to generate offer:', err.message);
+          }
+        };
+
+        // Delay offer by 800ms so both devices have fully loaded the call screen & room socket
+        setTimeout(sendOffer, 800);
       }
     } catch (error: any) {
       console.error('❌ Error initializing WebRTC call:', error.message || error);
@@ -217,11 +280,30 @@ class WebRTCService {
   }
 
   /**
-   * 5. Call Teardown & Resource Cleanup
+   * 5. Toggle Loudspeaker vs Earpiece (Speakerphone)
+   */
+  async setSpeaker(enableSpeaker: boolean) {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        playThroughEarpieceAndroid: !enableSpeaker, // false = LOUDSPEAKER, true = EARPIECE
+        shouldDuckAndroid: true,
+        staysActiveInBackground: true,
+      });
+      console.log(`🔊 Hardware audio output routed to: ${enableSpeaker ? 'LOUDSPEAKER' : 'EARPIECE'}`);
+    } catch (e: any) {
+      console.warn('Could not set speaker mode:', e.message);
+    }
+  }
+
+  /**
+   * 6. Call Teardown & Resource Cleanup
    */
   cleanup() {
     console.log('🔌 Cleaning up WebRTC audio connection and releasing mic...');
     this.stopLocalAudio();
+    this.setSpeaker(false).catch(() => {});
 
     if (this.peerConnection) {
       this.peerConnection.close();

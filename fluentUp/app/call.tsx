@@ -60,9 +60,16 @@ export default function CallScreen() {
   // 1. Initialize WebRTC Hardware Microphone & P2P Stream
   React.useEffect(() => {
     async function setupAudio() {
-      if (activePartner?.roomName) {
+      if (activePartner?.roomName && user?.id) {
+        // Ensure active socket signaling room connection
+        callSocketService.joinRoom(
+          activePartner.roomName,
+          user.id,
+          user.username || 'Learner',
+        );
+
         // Deterministic role: smaller ID acts as offerer (caller)
-        const isCaller = user?.id ? user.id < (activePartner.id || '') : true;
+        const isCaller = user.id < (activePartner.id || '');
         await webrtcService.initializeCall(activePartner.roomName, isCaller);
       }
     }
@@ -78,6 +85,11 @@ export default function CallScreen() {
   React.useEffect(() => {
     webrtcService.setMuted(isMuted);
   }, [isMuted]);
+
+  // 3. Sync speaker state (Loudspeaker vs Earpiece)
+  React.useEffect(() => {
+    webrtcService.setSpeaker(isSpeakerOn);
+  }, [isSpeakerOn]);
 
   // 3. Socket event listeners for real-time room sync
   React.useEffect(() => {

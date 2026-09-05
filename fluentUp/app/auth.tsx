@@ -23,13 +23,25 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
+import {
+  GoogleSignin,
+  statusCodes,
+  isSuccessResponse,
+} from '@react-native-google-signin/google-signin';
 import { FluentColors } from '@/constants/theme';
 import { BrandLogo } from '@/components/BrandLogo';
 import { useApp } from '@/context/AppContext';
 
+// Configure Google Sign-In with Web Client ID from Firebase / Google Cloud
+GoogleSignin.configure({
+  webClientId: '331335207670-3783qpl077c129t63jmtu73g3flg49hg.apps.googleusercontent.com',
+  scopes: ['profile', 'email'],
+  offlineAccess: false,
+});
+
 export default function AuthScreen() {
   const router = useRouter();
-  const { signupUser, loginUser } = useApp();
+  const { signupUser, loginUser, updateUserProfile } = useApp();
 
   // Mode: Sign Up vs Sign In
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
@@ -39,6 +51,54 @@ export default function AuthScreen() {
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
+
+  // Native One-Tap Google Sign-In Handler
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setErrorMessage('');
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+
+      let googleUser: any = null;
+      if (isSuccessResponse(response)) {
+        googleUser = response.data.user;
+      } else if ((response as any)?.data?.user) {
+        googleUser = (response as any).data.user;
+      } else if ((response as any)?.user) {
+        googleUser = (response as any).user;
+      }
+
+      if (googleUser && googleUser.email) {
+        // Direct login with user's verified Google Account
+        await loginUser(googleUser.email);
+
+        // Auto-populate Name and Profile Picture from Google
+        if (googleUser.name || googleUser.photo) {
+          await updateUserProfile({
+            username: googleUser.name || undefined,
+            photoUrl: googleUser.photo || undefined,
+          });
+        }
+
+        router.replace('/(tabs)');
+      }
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        // User dismissed the Google popup - silently ignore
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        // Operation already in progress
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setErrorMessage('Google Play Services is not available or outdated on this device.');
+      } else {
+        console.warn('Google Sign-In Error:', error);
+        setErrorMessage(error.message || 'Google Sign-In failed. Please try with email/password.');
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   // Handle Authentication submit
   const handleAuthSubmit = async () => {
@@ -246,7 +306,7 @@ export default function AuthScreen() {
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.socialBtn}
-              onPress={handleAuthSubmit}
+              onPress={() => alert('Apple Sign-In is available on iOS devices.')}
             >
               <AntDesign name="apple" size={18} color={FluentColors.text} />
               <Text style={styles.socialBtnText}>Apple</Text>
@@ -254,11 +314,14 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              style={styles.socialBtn}
-              onPress={handleAuthSubmit}
+              style={[styles.socialBtn, isGoogleLoading && { opacity: 0.6 }]}
+              onPress={handleGoogleSignIn}
+              disabled={isGoogleLoading}
             >
               <AntDesign name="google" size={18} color="#EA4335" />
-              <Text style={styles.socialBtnText}>Google</Text>
+              <Text style={styles.socialBtnText}>
+                {isGoogleLoading ? 'Connecting...' : 'Google'}
+              </Text>
             </TouchableOpacity>
           </View>
 
