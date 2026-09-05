@@ -26,6 +26,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useKeepAwake } from 'expo-keep-awake';
 import { FluentColors } from '@/constants/theme';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { EndCallSheet } from '@/components/EndCallSheet';
@@ -34,6 +35,9 @@ import { callSocketService } from '@/services/socket';
 import { webrtcService } from '@/services/webrtc';
 
 export default function CallScreen() {
+  // Keep screen awake during call so Android does not sleep or mute microphone
+  useKeepAwake();
+
   const router = useRouter();
   const {
     user,

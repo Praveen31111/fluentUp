@@ -36,14 +36,25 @@ try {
   isNativeWebRTCAvailable = false;
 }
 
-// Free Google Public STUN servers for NAT Traversal (Zero cost)
+// STUN + Global TURN servers for Carrier-Grade NAT Traversal across 4G/5G mobile carriers
 const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: [
+        'stun:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelay',
+      credential: 'openrelay',
+    },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 class WebRTCService {
@@ -187,6 +198,22 @@ class WebRTCService {
         }
       };
 
+      // Auto ICE connection health monitor & auto-recovery
+      (pc as any).oniceconnectionstatechange = () => {
+        const iceState = (pc as any).iceConnectionState;
+        console.log('🔄 WebRTC ICE connection state:', iceState);
+        if (iceState === 'disconnected' || iceState === 'failed') {
+          console.log('⚠️ Network fluctuation detected, attempting ICE restart...');
+          if (pc.restartIce) {
+            pc.restartIce();
+          }
+        }
+      };
+
+      (pc as any).onconnectionstatechange = () => {
+        console.log('🌐 WebRTC connection state:', (pc as any).connectionState);
+      };
+
       // 6. Incoming ICE Candidate listener
       callSocketService.onIceCandidate(async ({ candidate }) => {
         try {
@@ -288,7 +315,7 @@ class WebRTCService {
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
         playThroughEarpieceAndroid: !enableSpeaker, // false = LOUDSPEAKER, true = EARPIECE
-        shouldDuckAndroid: true,
+        shouldDuckAndroid: false,
         staysActiveInBackground: true,
       });
       console.log(`🔊 Hardware audio output routed to: ${enableSpeaker ? 'LOUDSPEAKER' : 'EARPIECE'}`);
