@@ -214,7 +214,7 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
-          <Text style={styles.username}>{user?.username || 'Praveen Kumar'}</Text>
+          <Text style={styles.username}>{user?.username || 'Learner'}</Text>
 
           {/* CEFR Level Tag */}
           <View style={styles.levelCapsule}>

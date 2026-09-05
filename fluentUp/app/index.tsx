@@ -17,10 +17,12 @@ import { useApp } from '@/context/AppContext';
 
 export default function IndexGatekeeper() {
   const router = useRouter();
-  const { user, isAuthenticated } = useApp();
+  const { user, isAuthenticated, isLoadingSession } = useApp();
 
   useEffect(() => {
-    // Check authentication and onboarding status
+    // Wait until local AsyncStorage session has been loaded
+    if (isLoadingSession) return;
+
     const timer = setTimeout(() => {
       if (!isAuthenticated || !user) {
         // Not logged in -> Welcome screen
@@ -38,10 +40,10 @@ export default function IndexGatekeeper() {
         // Approved user -> Direct to Home practice dashboard
         router.replace('/(tabs)');
       }
-    }, 150);
+    }, 100);
 
     return () => clearTimeout(timer);
-  }, [user, isAuthenticated]);
+  }, [user, isAuthenticated, isLoadingSession]);
 
   return (
     <View style={styles.loadingContainer}>

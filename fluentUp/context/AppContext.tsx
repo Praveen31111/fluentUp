@@ -90,9 +90,12 @@ interface AppContextType {
   submitAssessment: () => Promise<{ passed: boolean; level: FluencyLevel; score: number }>;
   resetAssessment: () => void;
 
-  // Active Persona / Testing Device Selector
-  currentPersona: 'praveen' | 'rahul' | 'priya';
-  switchPersona: (persona: 'praveen' | 'rahul' | 'priya') => Promise<void>;
+  // Session Loading State
+  isLoadingSession: boolean;
+
+  // Active Persona (Optional backwards compatibility)
+  currentPersona?: 'praveen' | 'rahul' | 'priya';
+  switchPersona?: (persona: 'praveen' | 'rahul' | 'priya') => Promise<void>;
 
   // Matchmaking Queue Engine
   isMatchmaking: boolean;
@@ -218,26 +221,16 @@ const FALLBACK_QUESTIONS: AssessmentQuestion[] = [
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Persona & Auth State (Supports testing between multiple physical phones)
+  // 1. Session Loading & Auth State (Starts null so real user goes through auth or restores session)
+  const [isLoadingSession, setIsLoadingSession] = useState<boolean>(true);
+  const [authToken, setAuthToken] = useState<string>('');
+  const [user, setUser] = useState<UserProfile | null>(null);
+
+  // Optional backwards compatibility placeholder
   const [currentPersona, setCurrentPersona] = useState<'praveen' | 'rahul' | 'priya'>('praveen');
-  const [authToken, setAuthToken] = useState<string>('dev-token-praveen');
-  const [user, setUser] = useState<UserProfile | null>({
-    id: 'user_praveen_101',
-    email: 'praveen@fluentup.dev',
-    username: 'Praveen Kumar',
-    level: 'C1',
-    assessmentScore: 88,
-    status: 'APPROVED',
-    isEmailVerified: true,
-    totalSessions: 12,
-    totalMinutes: 86,
-    topTopic: 'Daily Routines & Urban Travel',
-    address: 'New Delhi, India',
-    education: 'B.Tech Computer Science',
-    hobbies: ['Coding', 'Cricket', 'Traveling', 'Podcasts'],
-    bio: 'Aspiring software developer practicing professional English fluency.',
-    photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-  });
+  const switchPersona = async (persona: 'praveen' | 'rahul' | 'priya') => {
+    setCurrentPersona(persona);
+  };
 
   // 2. Assessment State
   const [questions, setQuestions] = useState<AssessmentQuestion[]>(FALLBACK_QUESTIONS);
@@ -255,119 +248,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState<boolean>(true);
 
-  // Switch persona between devices (e.g. Phone 1 = Praveen, Phone 2 = Rahul, Phone 3 = Priya)
-  const switchPersona = async (persona: 'praveen' | 'rahul' | 'priya', save = true) => {
-    setCurrentPersona(persona);
-    const token = `dev-token-${persona}`;
-    setAuthToken(token);
-    setActivePartner(null);
-    setIsMatchmaking(false);
-
-    if (save) {
-      try {
-        await AsyncStorage.setItem('fluentup_persona', persona);
-      } catch (e) {
-        console.warn('Failed to save persona to storage:', e);
-      }
-    }
-
-    const defaultProfiles = {
-      praveen: {
-        username: 'Praveen Kumar',
-        email: 'praveen@fluentup.dev',
-        level: 'C1' as FluencyLevel,
-        address: 'New Delhi, India',
-        education: 'B.Tech Computer Science',
-        hobbies: ['Coding', 'Cricket', 'Traveling', 'Podcasts'],
-        bio: 'Aspiring software engineer passionate about conversations.',
-        photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-      },
-      rahul: {
-        username: 'Rahul Sharma',
-        email: 'rahul@fluentup.dev',
-        level: 'C1' as FluencyLevel,
-        address: 'Bengaluru, India',
-        education: 'MBA Marketing',
-        hobbies: ['Badminton', 'Startups', 'Reading', 'Chess'],
-        bio: 'Product enthusiast passionate about tech startups and spoken clarity.',
-        photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
-      },
-      priya: {
-        username: 'Priya Patel',
-        email: 'priya@fluentup.dev',
-        level: 'C1' as FluencyLevel,
-        address: 'Mumbai, India',
-        education: 'M.A. English Literature',
-        hobbies: ['Creative Writing', 'Music', 'Photography', 'Yoga'],
-        bio: 'Language lover exploring cross-cultural conversations and literature.',
-        photoUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80',
-      },
-    };
-
-    // User ka local photo device storage se load karein (Database mein nahi rakha jata)
-    let localPhoto: string | null = null;
-    try {
-      localPhoto = await AsyncStorage.getItem(`fluentup_user_photo_${persona}`);
-    } catch (e) {
-      // Ignored
-    }
-
-    const remoteUser = await AuthApi.getMe(token);
-    if (remoteUser) {
-      setUser({
-        id: remoteUser.id,
-        email: remoteUser.email,
-        username: remoteUser.username || defaultProfiles[persona].username,
-        level: (remoteUser.level || defaultProfiles[persona].level) as FluencyLevel,
-        assessmentScore: remoteUser.assessmentScore || 88,
-        status: (remoteUser.approvalStatus || 'APPROVED') as ApprovalStatus,
-        isEmailVerified: true,
-        totalSessions: remoteUser.totalSessions || 0,
-        totalMinutes: remoteUser.totalMinutes || 0,
-        topTopic: remoteUser.topTopic || 'Daily Routines',
-        address: remoteUser.address || defaultProfiles[persona].address,
-        education: remoteUser.education || defaultProfiles[persona].education,
-        hobbies: (remoteUser.hobbies && remoteUser.hobbies.length > 0) ? remoteUser.hobbies : defaultProfiles[persona].hobbies,
-        bio: remoteUser.bio || defaultProfiles[persona].bio,
-        photoUrl: localPhoto || remoteUser.photoUrl || defaultProfiles[persona].photoUrl,
-      });
-    } else {
-      setUser({
-        id: `user_${persona}_dev`,
-        email: defaultProfiles[persona].email,
-        username: defaultProfiles[persona].username,
-        level: defaultProfiles[persona].level,
-        assessmentScore: 90,
-        status: 'APPROVED',
-        isEmailVerified: true,
-        totalSessions: 8,
-        totalMinutes: 64,
-        topTopic: 'Everyday English & Conversations',
-        address: defaultProfiles[persona].address,
-        education: defaultProfiles[persona].education,
-        hobbies: defaultProfiles[persona].hobbies,
-        bio: defaultProfiles[persona].bio,
-        photoUrl: localPhoto || defaultProfiles[persona].photoUrl,
-      });
-    }
-  };
-
-  // App Mount: Restore saved persona from storage
+  // App Mount: Restore saved real user session from device storage
   useEffect(() => {
-    async function restorePersona() {
+    async function restoreSession() {
       try {
-        const saved = await AsyncStorage.getItem('fluentup_persona');
-        if (saved === 'praveen' || saved === 'rahul' || saved === 'priya') {
-          await switchPersona(saved, false);
-        } else {
-          await switchPersona('praveen', false);
+        const savedToken = await AsyncStorage.getItem('fluentup_auth_token');
+        const savedUserJson = await AsyncStorage.getItem('fluentup_user_profile');
+
+        if (savedToken) {
+          setAuthToken(savedToken);
+
+          if (savedUserJson) {
+            try {
+              setUser(JSON.parse(savedUserJson));
+            } catch (err) {
+              console.warn('Failed to parse cached user profile:', err);
+            }
+          }
+
+          // Fetch fresh updated profile from live backend server
+          const remoteUser = await AuthApi.getMe(savedToken);
+          if (remoteUser) {
+            let localPhoto: string | null = null;
+            try {
+              localPhoto = await AsyncStorage.getItem('fluentup_user_local_photo');
+            } catch (e) {}
+
+            const freshProfile: UserProfile = {
+              id: remoteUser.id,
+              email: remoteUser.email,
+              username: remoteUser.username || remoteUser.email.split('@')[0] || 'Learner',
+              level: (remoteUser.level || 'B2') as FluencyLevel,
+              assessmentScore: remoteUser.assessmentScore || 0,
+              status: (remoteUser.approvalStatus || 'APPROVED') as ApprovalStatus,
+              isEmailVerified: true,
+              totalSessions: remoteUser.totalSessions || 0,
+              totalMinutes: remoteUser.totalMinutes || 0,
+              topTopic: remoteUser.topTopic || 'Everyday English',
+              address: remoteUser.address || '',
+              education: remoteUser.education || '',
+              hobbies: (remoteUser.hobbies && remoteUser.hobbies.length > 0) ? remoteUser.hobbies : ['English Practice', 'Traveling'],
+              bio: remoteUser.bio || 'Practicing conversational English.',
+              photoUrl: localPhoto || remoteUser.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+            };
+            setUser(freshProfile);
+            await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(freshProfile));
+          }
         }
       } catch (e) {
-        // Fallback to Praveen
-        switchPersona('praveen', false);
+        console.warn('Failed to restore session:', e);
+      } finally {
+        setIsLoadingSession(false);
       }
     }
-    restorePersona();
+    restoreSession();
   }, []);
 
   // Profile Update Handler (Photo saved locally on phone, text details saved in Database)
@@ -382,7 +316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       // 1. Mobile se upload hui photo ko phone ki local storage mein save karein (Zero DB overhead)
       if (data.photoUrl) {
-        await AsyncStorage.setItem(`fluentup_user_photo_${currentPersona}`, data.photoUrl);
+        await AsyncStorage.setItem('fluentup_user_local_photo', data.photoUrl);
       }
 
       // 2. Database mein sirf text details save karein (Address, Education, Hobbies, Bio, Username)
@@ -394,10 +328,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bio: data.bio,
       });
 
-      // 3. React context state ko instantly update karein
+      // 3. React context state ko instantly update karein aur AsyncStorage mein persist karein
       setUser((prev) => {
         if (!prev) return null;
-        return {
+        const updated = {
           ...prev,
           username: data.username !== undefined ? data.username : prev.username,
           address: data.address !== undefined ? data.address : prev.address,
@@ -406,6 +340,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: data.bio !== undefined ? data.bio : prev.bio,
           photoUrl: data.photoUrl !== undefined ? data.photoUrl : prev.photoUrl,
         };
+        AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(updated)).catch(() => {});
+        return updated;
       });
 
       return true;
@@ -525,26 +461,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Auth: Login User with live server sync
   const loginUser = async (email: string) => {
-    const token = `dev-token-${email.split('@')[0]}`;
+    const cleanId = email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_');
+    const token = `dev-token-${cleanId}`;
     setAuthToken(token);
+    await AsyncStorage.setItem('fluentup_auth_token', token);
+
+    let localPhoto: string | null = null;
+    try {
+      localPhoto = await AsyncStorage.getItem('fluentup_user_local_photo');
+    } catch (e) {}
 
     const remoteUser = await AuthApi.getMe(token);
     if (remoteUser) {
-      setUser({
+      const loggedUser: UserProfile = {
         id: remoteUser.id,
         email: remoteUser.email,
-        username: remoteUser.username,
-        level: remoteUser.level,
-        assessmentScore: remoteUser.assessmentScore,
-        status: remoteUser.approvalStatus,
+        username: remoteUser.username || email.split('@')[0] || 'Learner',
+        level: (remoteUser.level || 'B2') as FluencyLevel,
+        assessmentScore: remoteUser.assessmentScore || 85,
+        status: (remoteUser.approvalStatus || 'APPROVED') as ApprovalStatus,
         isEmailVerified: true,
-        totalSessions: remoteUser.totalSessions,
-        totalMinutes: remoteUser.totalMinutes,
+        totalSessions: remoteUser.totalSessions || 0,
+        totalMinutes: remoteUser.totalMinutes || 0,
         topTopic: remoteUser.topTopic || 'Daily Routines',
-      });
+        address: remoteUser.address || '',
+        education: remoteUser.education || '',
+        hobbies: (remoteUser.hobbies && remoteUser.hobbies.length > 0) ? remoteUser.hobbies : ['English Practice'],
+        bio: remoteUser.bio || '',
+        photoUrl: localPhoto || remoteUser.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+      };
+      setUser(loggedUser);
+      await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(loggedUser));
     } else {
-      // Fallback
-      setUser({
+      const fallbackUser: UserProfile = {
         id: 'user_' + Date.now(),
         email,
         username: email.split('@')[0] || 'Learner',
@@ -552,58 +501,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         assessmentScore: 85,
         status: 'APPROVED',
         isEmailVerified: true,
-        totalSessions: 12,
-        totalMinutes: 86,
+        totalSessions: 0,
+        totalMinutes: 0,
         topTopic: 'Daily Routines & Urban Travel',
-      });
+        photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+      };
+      setUser(fallbackUser);
+      await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(fallbackUser));
     }
   };
 
   // Auth: Sign Up User
   const signupUser = async (email: string) => {
-    const token = `dev-token-${email.split('@')[0]}`;
+    const cleanId = email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_');
+    const token = `dev-token-${cleanId}`;
     setAuthToken(token);
+    await AsyncStorage.setItem('fluentup_auth_token', token);
 
-    const remoteUser = await AuthApi.getMe(token);
-    if (remoteUser) {
-      setUser({
-        id: remoteUser.id,
-        email: remoteUser.email,
-        username: remoteUser.username,
-        level: remoteUser.level,
-        assessmentScore: remoteUser.assessmentScore,
-        status: remoteUser.approvalStatus,
-        isEmailVerified: false,
-        totalSessions: remoteUser.totalSessions,
-        totalMinutes: remoteUser.totalMinutes,
-        topTopic: remoteUser.topTopic || 'Everyday English',
-      });
-    } else {
-      setUser({
-        id: 'user_' + Date.now(),
-        email,
-        username: email.split('@')[0] || 'New Learner',
-        level: 'B1',
-        assessmentScore: 0,
-        status: 'PENDING',
-        isEmailVerified: false,
-        totalSessions: 0,
-        totalMinutes: 0,
-        topTopic: 'Everyday English',
-      });
-    }
+    // Initial sign up: status is PENDING and email not verified yet
+    const newUser: UserProfile = {
+      id: 'user_' + Date.now(),
+      email,
+      username: email.split('@')[0] || 'New Learner',
+      level: 'B1',
+      assessmentScore: 0,
+      status: 'PENDING',
+      isEmailVerified: false,
+      totalSessions: 0,
+      totalMinutes: 0,
+      topTopic: 'Everyday English',
+      photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+    };
+    setUser(newUser);
+    await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(newUser));
   };
 
   // Auth: Verify Email
-  const verifyEmail = () => {
+  const verifyEmail = async () => {
     if (user) {
-      setUser({ ...user, isEmailVerified: true });
+      const updated = { ...user, isEmailVerified: true };
+      setUser(updated);
+      try {
+        await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(updated));
+      } catch (e) {}
     }
   };
 
   // Auth: Logout User
-  const logoutUser = () => {
+  const logoutUser = async () => {
     setUser(null);
+    setAuthToken('');
+    try {
+      await AsyncStorage.removeItem('fluentup_auth_token');
+      await AsyncStorage.removeItem('fluentup_user_profile');
+    } catch (e) {
+      console.warn('Failed to remove storage on logout:', e);
+    }
   };
 
   // Assessment: Select Option
@@ -638,12 +591,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const score = serverResult.score;
 
       if (user) {
-        setUser({
+        const updated: UserProfile = {
           ...user,
           level: assignedLevel,
           assessmentScore: score,
           status: passed ? 'APPROVED' : 'REJECTED',
-        });
+        };
+        setUser(updated);
+        AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(updated)).catch(() => {});
       }
 
       return { passed, level: assignedLevel, score };
@@ -662,12 +617,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const assignedLevel: FluencyLevel = scorePercentage >= 85 ? 'C1' : scorePercentage >= 60 ? 'B2' : scorePercentage >= 50 ? 'B1' : 'A2';
 
     if (user) {
-      setUser({
+      const updated: UserProfile = {
         ...user,
         level: assignedLevel,
         assessmentScore: scorePercentage,
         status: passed ? 'APPROVED' : 'REJECTED',
-      });
+      };
+      setUser(updated);
+      AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(updated)).catch(() => {});
     }
 
     return { passed, level: assignedLevel, score: scorePercentage };
@@ -748,6 +705,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         user,
         authToken,
+        isLoadingSession,
         isAuthenticated: !!user,
         loginUser,
         signupUser,

@@ -33,7 +33,7 @@ import { useApp } from '@/context/AppContext';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { user, startMatchmaking, currentPersona, switchPersona } = useApp();
+  const { user, startMatchmaking } = useApp();
 
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
@@ -59,7 +59,7 @@ export default function HomeScreen() {
           {/* Active Level Pill */}
           <View style={styles.levelBadge}>
             <View style={styles.levelDot} />
-            <Text style={styles.levelBadgeText}>{user?.level || 'C1'} High</Text>
+            <Text style={styles.levelBadgeText}>{user?.level || 'B2'} Fluency</Text>
           </View>
 
           {/* Profile Mini Avatar */}
@@ -70,11 +70,7 @@ export default function HomeScreen() {
           >
             <Image
               source={{
-                uri: currentPersona === 'rahul'
-                  ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80'
-                  : currentPersona === 'priya'
-                  ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80'
-                  : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
+                uri: user?.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80',
               }}
               style={styles.avatarImg}
             />
@@ -83,92 +79,25 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Device Persona Selector for 2-Phone Testing */}
-        <View style={styles.deviceSelectorContainer}>
-          <View style={styles.deviceSelectorHeader}>
-            <MaterialIcons name="devices" size={14} color={FluentColors.secondaryText} />
-            <Text style={styles.deviceSelectorTitle}>ACTIVE DEVICE IDENTITY</Text>
-          </View>
-
-          <View style={styles.deviceChipsRow}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.deviceChip,
-                currentPersona === 'praveen' && styles.deviceChipActive,
-              ]}
-              onPress={() => switchPersona('praveen')}
-            >
-              <View style={[styles.deviceDot, currentPersona === 'praveen' && styles.deviceDotActive]} />
-              <Text
-                style={[
-                  styles.deviceChipText,
-                  currentPersona === 'praveen' && styles.deviceChipTextActive,
-                ]}
-              >
-                Phone 1: Praveen
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.deviceChip,
-                currentPersona === 'rahul' && styles.deviceChipActive,
-              ]}
-              onPress={() => switchPersona('rahul')}
-            >
-              <View style={[styles.deviceDot, currentPersona === 'rahul' && styles.deviceDotActive]} />
-              <Text
-                style={[
-                  styles.deviceChipText,
-                  currentPersona === 'rahul' && styles.deviceChipTextActive,
-                ]}
-              >
-                Phone 2: Rahul
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.deviceChip,
-                currentPersona === 'priya' && styles.deviceChipActive,
-              ]}
-              onPress={() => switchPersona('priya')}
-            >
-              <View style={[styles.deviceDot, currentPersona === 'priya' && styles.deviceDotActive]} />
-              <Text
-                style={[
-                  styles.deviceChipText,
-                  currentPersona === 'priya' && styles.deviceChipTextActive,
-                ]}
-              >
-                Phone 3: Priya
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* Presence Indicator Row */}
         <View style={styles.presenceRow}>
           <View style={styles.statusPill}>
             <View style={styles.pulseDot} />
             <Text style={styles.statusPillText}>Ready to practice</Text>
             <View style={styles.smallDivider} />
-            <Text style={styles.statusSubText}>{user?.level || 'C1'} · Advanced</Text>
+            <Text style={styles.statusSubText}>{user?.level || 'B2'} · Active</Text>
           </View>
 
           <View style={styles.onlinePill}>
             <MaterialIcons name="graphic-eq" size={14} color={FluentColors.tertiary} />
-            <Text style={styles.onlineText}>42 online</Text>
+            <Text style={styles.onlineText}>Speaking Now</Text>
           </View>
         </View>
 
         {/* Personalized Greeting */}
         <View style={styles.greetingArea}>
           <Text style={styles.greetingSub}>
-            Good evening, {user?.username?.split(' ')[0] || 'Praveen'}
+            Good evening, {user?.username?.split(' ')[0] || 'Learner'}
           </Text>
           <Text style={styles.greetingMain}>Ready to speak?</Text>
         </View>
@@ -341,65 +270,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 28,
-  },
-  deviceSelectorContainer: {
-    backgroundColor: FluentColors.surfaceLowest,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: FluentColors.surfaceContainerHigh,
-  },
-  deviceSelectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  deviceSelectorTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: FluentColors.secondaryText,
-  },
-  deviceChipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  deviceChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: FluentColors.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  deviceChipActive: {
-    backgroundColor: FluentColors.primaryContainer,
-    borderColor: FluentColors.primaryContainer,
-  },
-  deviceDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: FluentColors.secondaryText,
-  },
-  deviceDotActive: {
-    backgroundColor: FluentColors.onPrimary,
-  },
-  deviceChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: FluentColors.text,
-  },
-  deviceChipTextActive: {
-    color: FluentColors.onPrimary,
-    fontWeight: '700',
   },
   presenceRow: {
     flexDirection: 'row',

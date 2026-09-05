@@ -34,14 +34,14 @@ export default function AuthScreen() {
   // Mode: Sign Up vs Sign In
   const [isSignUp, setIsSignUp] = useState<boolean>(true);
 
-  // Form Fields
-  const [email, setEmail] = useState<string>('praveen@example.com');
-  const [password, setPassword] = useState<string>('FluencyPartner2025!');
+  // Form Fields (Empty for real users)
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Handle Authentication submit
-  const handleAuthSubmit = () => {
+  const handleAuthSubmit = async () => {
     if (!email || !email.includes('@')) {
       setErrorMessage('Please enter a valid email address');
       return;
@@ -55,11 +55,11 @@ export default function AuthScreen() {
 
     if (isSignUp) {
       // New user registration -> Navigate to Email Verification
-      signupUser(email);
+      await signupUser(email.trim());
       router.push('/verify-email');
     } else {
-      // Existing user sign-in -> Check assessment status
-      loginUser(email);
+      // Existing user sign-in -> Connect to Live Profile
+      await loginUser(email.trim());
       router.replace('/(tabs)');
     }
   };

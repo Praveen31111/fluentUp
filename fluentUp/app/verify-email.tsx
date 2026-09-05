@@ -106,7 +106,7 @@ export default function VerifyEmailScreen() {
 
           <View style={styles.emailBadge}>
             <MaterialIcons name="alternate-email" size={16} color={FluentColors.secondaryText} />
-            <Text style={styles.emailText}>{user?.email || 'praveen@example.com'}</Text>
+            <Text style={styles.emailText}>{user?.email || 'your-email@example.com'}</Text>
           </View>
         </View>
 
