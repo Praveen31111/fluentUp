@@ -26,7 +26,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { activateKeepAwakeAsync, deactivateKeepAwake, useKeepAwake } from 'expo-keep-awake';
 import { FluentColors } from '@/constants/theme';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { EndCallSheet } from '@/components/EndCallSheet';
@@ -34,10 +33,41 @@ import { useApp } from '@/context/AppContext';
 import { callSocketService } from '@/services/socket';
 import { webrtcService } from '@/services/webrtc';
 
-export default function CallScreen() {
-  // Prevent screen from sleeping/locking during an active conversation
-  useKeepAwake();
+// Safe KeepAwake helper (prevents native module crash if missing or mismatched)
+let safeKeepAwake: {
+  activate: () => Promise<void>;
+  deactivate: () => Promise<void>;
+} = {
+  activate: async () => {},
+  deactivate: async () => {},
+};
 
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const KeepAwake = require('expo-keep-awake');
+  if (KeepAwake) {
+    safeKeepAwake = {
+      activate: async () => {
+        try {
+          if (KeepAwake.activateKeepAwakeAsync) {
+            await KeepAwake.activateKeepAwakeAsync('fluentup-call-screen');
+          }
+        } catch (e) {}
+      },
+      deactivate: async () => {
+        try {
+          if (KeepAwake.deactivateKeepAwake) {
+            await KeepAwake.deactivateKeepAwake('fluentup-call-screen');
+          }
+        } catch (e) {}
+      },
+    };
+  }
+} catch (err) {
+  console.warn('Notice: expo-keep-awake native module not linked:', err);
+}
+
+export default function CallScreen() {
   const router = useRouter();
   const {
     user,
@@ -50,13 +80,11 @@ export default function CallScreen() {
     endCall,
   } = useApp();
 
-  // Explicitly activate KeepAwake tag to guarantee screen stays awake on all Android vendors
+  // Safely activate KeepAwake tag to keep screen on without crashing
   React.useEffect(() => {
-    activateKeepAwakeAsync('fluentup-call-screen').catch((err) => {
-      console.warn('Could not activate keep awake tag:', err);
-    });
+    safeKeepAwake.activate();
     return () => {
-      deactivateKeepAwake('fluentup-call-screen');
+      safeKeepAwake.deactivate();
     };
   }, []);
 
