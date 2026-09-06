@@ -35,11 +35,17 @@ class CallSocketService {
     return this.socket;
   }
 
-  joinRoom(roomName: string, userId: string, username: string, onCallReady?: (data: any) => void) {
+  joinRoom(
+    roomName: string,
+    userId: string,
+    username: string,
+    userProfile?: any,
+    onCallReady?: (data: any) => void,
+  ) {
     const socket = this.connect();
     this.currentRoom = roomName;
 
-    socket.emit('join-room', { roomName, userId, username });
+    socket.emit('join-room', { roomName, userId, username, userProfile });
 
     if (onCallReady) {
       socket.off('call-ready');
@@ -47,6 +53,22 @@ class CallSocketService {
         console.log('🎙️ Received call-ready event:', data);
         onCallReady(data);
       });
+    }
+  }
+
+  onPartnerProfile(callback: (profile: any) => void) {
+    if (this.socket) {
+      this.socket.off('partner-profile');
+      this.socket.on('partner-profile', (data) => {
+        console.log('👤 [Socket] partner-profile received:', data);
+        callback(data);
+      });
+    }
+  }
+
+  syncProfile(roomName: string, userProfile: any) {
+    if (this.socket) {
+      this.socket.emit('sync-profile', { roomName, userProfile });
     }
   }
 

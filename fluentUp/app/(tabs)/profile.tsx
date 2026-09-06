@@ -84,7 +84,7 @@ export default function ProfileScreen() {
     setIsEditModalOpen(true);
   };
 
-  // Pick Photo from Mobile Gallery
+  // Pick Photo from Mobile Gallery (Converts to Base64 data URI for universal cross-device sync)
   const handlePickFromGallery = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -97,18 +97,23 @@ export default function ProfileScreen() {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 0.35,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setEditPhotoUrl(result.assets[0].uri);
+        const asset = result.assets[0];
+        const photoDataUri = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        setEditPhotoUrl(photoDataUri);
       }
     } catch (e) {
       console.warn('Gallery pick error:', e);
     }
   };
 
-  // Take Photo with Mobile Camera
+  // Take Photo with Mobile Camera (Converts to Base64 data URI for universal cross-device sync)
   const handleTakePhoto = async () => {
     try {
       const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
@@ -120,11 +125,16 @@ export default function ProfileScreen() {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 0.35,
+        base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setEditPhotoUrl(result.assets[0].uri);
+        const asset = result.assets[0];
+        const photoDataUri = asset.base64
+          ? `data:image/jpeg;base64,${asset.base64}`
+          : asset.uri;
+        setEditPhotoUrl(photoDataUri);
       }
     } catch (e) {
       console.warn('Camera photo error:', e);

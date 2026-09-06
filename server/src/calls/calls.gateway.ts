@@ -40,6 +40,9 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Socket ID -> { userId, roomName }
   private socketMeta = new Map<string, { userId: string; roomName: string }>();
 
+  // Real-time live profile store per room: roomName -> (userId -> userProfile)
+  private roomProfiles = new Map<string, Map<string, any>>();
+
   constructor(private readonly callsService: CallsService) {}
 
   /**
@@ -78,6 +81,7 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         participants.delete(client.id);
         if (participants.size === 0) {
           this.roomParticipants.delete(roomName);
+          this.roomProfiles.delete(roomName);
         } else {
           // Partner ko inform karna ki partner disconnect ho gaya aur call end karein
           this.server.to(roomName).emit('call-ended', {
@@ -105,9 +109,9 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('join-room')
   handleJoinRoom(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { roomName: string; userId: string; username: string },
+    @MessageBody() payload: { roomName: string; userId: string; username: string; userProfile?: any },
   ) {
-    const { roomName, userId, username } = payload;
+    const { roomName, userId, username, userProfile } = payload;
     client.join(roomName);
 
     if (!this.roomParticipants.has(roomName)) {
@@ -115,6 +119,24 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     this.roomParticipants.get(roomName)!.add(client.id);
     this.socketMeta.set(client.id, { userId, roomName });
+
+    if (!this.roomProfiles.has(roomName)) {
+      this.roomProfiles.set(roomName, new Map());
+    }
+
+    // Live profile store karein aur partner ko emit karein
+    if (userProfile) {
+      this.roomProfiles.get(roomName)!.set(userId, userProfile);
+      client.to(roomName).emit('partner-profile', userProfile);
+    }
+
+    // Room me pehle se maujood partner ka profile is naye client ko bhejein
+    const existingProfiles = this.roomProfiles.get(roomName)!;
+    for (const [otherId, otherProf] of existingProfiles.entries()) {
+      if (otherId !== userId && otherProf) {
+        client.emit('partner-profile', otherProf);
+      }
+    }
 
     this.logger.log(`👤 ${username} (${userId}) joined room: ${roomName}`);
 
@@ -131,6 +153,26 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     return { status: 'JOINED', roomName, participantCount };
+  }
+
+  /**
+   * Live Profile Sync
+   * --------------------------------------------------------
+   * Jab bhi koi user apni profile update karta hai call ke dauraan.
+   */
+  @SubscribeMessage('sync-profile')
+  handleSyncProfile(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomName: string; userProfile: any },
+  ) {
+    const { roomName, userProfile } = payload;
+    if (roomName && userProfile) {
+      const meta = this.socketMeta.get(client.id);
+      if (meta && this.roomProfiles.has(roomName)) {
+        this.roomProfiles.get(roomName)!.set(meta.userId, userProfile);
+      }
+      client.to(roomName).emit('partner-profile', userProfile);
+    }
   }
 
   /**

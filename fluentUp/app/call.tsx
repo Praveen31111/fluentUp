@@ -93,6 +93,14 @@ export default function CallScreen() {
   // End Call confirmation sheet visibility
   const [showEndSheet, setShowEndSheet] = useState<boolean>(false);
   const [isPartnerMuted, setIsPartnerMuted] = useState<boolean>(false);
+  const [livePartner, setLivePartner] = useState<any>(activePartner);
+
+  // Sync initial partner data
+  React.useEffect(() => {
+    if (activePartner) {
+      setLivePartner(activePartner);
+    }
+  }, [activePartner]);
 
   // Format seconds to MM:SS string
   const formatTime = (seconds: number) => {
@@ -101,15 +109,27 @@ export default function CallScreen() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // 1. Initialize WebRTC Hardware Microphone & P2P Stream
+  // 1. Initialize WebRTC Hardware Microphone & P2P Stream + Live Profile Broadcast
   React.useEffect(() => {
     async function setupAudio() {
       if (activePartner?.roomName && user?.id) {
-        // Ensure active socket signaling room connection
+        // Ensure active socket signaling room connection with user's full profile for cross-device sync
         callSocketService.joinRoom(
           activePartner.roomName,
           user.id,
           user.username || 'Learner',
+          {
+            id: user.id,
+            name: user.username,
+            username: user.username,
+            photoUrl: user.photoUrl,
+            avatar: user.photoUrl,
+            address: user.address,
+            education: user.education,
+            hobbies: user.hobbies,
+            bio: user.bio,
+            level: user.level,
+          },
         );
 
         // Deterministic role: smaller ID acts as offerer (caller)
@@ -146,10 +166,28 @@ export default function CallScreen() {
     return () => clearInterval(heartbeatInterval);
   }, [activePartner?.roomName, user?.id]);
 
-  // 5. Socket event listeners for real-time room sync & remote call end
+  // 5. Socket event listeners for real-time room sync, partner profile & remote call end
   React.useEffect(() => {
     callSocketService.onPartnerMuteStatus((data) => {
       setIsPartnerMuted(data.isMuted);
+    });
+
+    callSocketService.onPartnerProfile((partnerData: any) => {
+      console.log('👤 Live partner profile synced over socket:', partnerData?.name);
+      if (partnerData) {
+        setLivePartner((prev: any) => ({
+          ...prev,
+          name: partnerData.name || partnerData.username || prev?.name,
+          avatar: partnerData.photoUrl || partnerData.avatar || prev?.avatar,
+          address: partnerData.address || prev?.address,
+          education: partnerData.education || prev?.education,
+          hobbies:
+            partnerData.hobbies && partnerData.hobbies.length > 0
+              ? partnerData.hobbies
+              : prev?.hobbies,
+          level: partnerData.level ? `${partnerData.level} · Fluent` : prev?.level,
+        }));
+      }
     });
 
     const handleRemoteEnd = (data: any) => {
@@ -161,6 +199,9 @@ export default function CallScreen() {
     callSocketService.onCallEnded(handleRemoteEnd);
     callSocketService.onPartnerDisconnected(handleRemoteEnd);
   }, [router]);
+
+  // Combined real-time partner data
+  const displayPartner = livePartner || activePartner;
 
   // Confirm End Call -> Navigate to Feedback Screen
   const handleConfirmEndCall = () => {
@@ -198,8 +239,10 @@ export default function CallScreen() {
               <Image
                 source={{
                   uri:
-                    activePartner?.avatar ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+                    (displayPartner?.avatar &&
+                      (displayPartner.avatar.startsWith('http') || displayPartner.avatar.startsWith('data:image/')))
+                      ? displayPartner.avatar
+                      : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
                 }}
                 style={styles.avatarImg}
               />
@@ -211,11 +254,11 @@ export default function CallScreen() {
           </View>
 
           {/* Partner Details */}
-          <Text style={styles.partnerName}>{activePartner?.name || 'Speaking Partner'}</Text>
+          <Text style={styles.partnerName}>{displayPartner?.name || 'Speaking Partner'}</Text>
           <View style={styles.levelBadge}>
             <Text style={styles.levelLang}>English</Text>
             <View style={styles.levelDividerDot} />
-            <Text style={styles.levelCode}>{activePartner?.level || 'C1 · Fluent'}</Text>
+            <Text style={styles.levelCode}>{displayPartner?.level || 'C1 · Fluent'}</Text>
           </View>
 
           {/* Minimal Living Voice Waveform */}
@@ -230,8 +273,8 @@ export default function CallScreen() {
             {isMuted
               ? 'Your microphone is muted'
               : isPartnerMuted
-              ? `${activePartner?.name || 'Partner'} is currently muted`
-              : `${activePartner?.name || 'Partner'} is speaking...`}
+              ? `${displayPartner?.name || 'Partner'} is currently muted`
+              : `${displayPartner?.name || 'Partner'} is speaking...`}
           </Text>
 
           {/* Partner Icebreaker Card (Address, Education, Hobbies) */}
@@ -243,25 +286,25 @@ export default function CallScreen() {
 
             {/* Address & Education */}
             <View style={styles.partnerMetaRow}>
-              {activePartner?.address ? (
+              {displayPartner?.address ? (
                 <View style={styles.partnerMetaPill}>
                   <MaterialIcons name="location-on" size={13} color={FluentColors.primary} />
-                  <Text style={styles.partnerMetaText}>{activePartner.address}</Text>
+                  <Text style={styles.partnerMetaText}>{displayPartner.address}</Text>
                 </View>
               ) : null}
 
-              {activePartner?.education ? (
+              {displayPartner?.education ? (
                 <View style={styles.partnerMetaPill}>
                   <MaterialIcons name="school" size={13} color={FluentColors.tertiary} />
-                  <Text style={styles.partnerMetaText}>{activePartner.education}</Text>
+                  <Text style={styles.partnerMetaText}>{displayPartner.education}</Text>
                 </View>
               ) : null}
             </View>
 
             {/* Hobbies chips */}
-            {activePartner?.hobbies && activePartner.hobbies.length > 0 ? (
+            {displayPartner?.hobbies && displayPartner.hobbies.length > 0 ? (
               <View style={styles.partnerHobbiesWrap}>
-                {activePartner.hobbies.slice(0, 4).map((h, i) => (
+                {displayPartner.hobbies.slice(0, 4).map((h: string, i: number) => (
                   <View key={i} style={styles.partnerHobbyTag}>
                     <Text style={styles.partnerHobbyTagText}>{h}</Text>
                   </View>
@@ -360,7 +403,7 @@ export default function CallScreen() {
         {/* End Call Safe Exit Sheet */}
         <EndCallSheet
           visible={showEndSheet}
-          partnerName={activePartner?.name || 'Alex'}
+          partnerName={displayPartner?.name || 'Alex'}
           durationText={formatTime(callDuration)}
           onKeepTalking={() => setShowEndSheet(false)}
           onConfirmEnd={handleConfirmEndCall}

@@ -10,6 +10,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -18,6 +19,10 @@ async function bootstrap() {
 
   // NestFactory ke zariye root AppModule se application instance create kiya
   const app = await NestFactory.create(AppModule);
+
+  // Increase payload limit for profile photos & avatars (Base64 data URIs)
+  app.use(json({ limit: '15mb' }));
+  app.use(urlencoded({ extended: true, limit: '15mb' }));
 
   // ConfigService inject karke environment variables access kiye
   const configService = app.get(ConfigService);

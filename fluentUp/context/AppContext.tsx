@@ -397,7 +397,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? rawName.replace('Learner ', '').charAt(0).toUpperCase() + rawName.replace('Learner ', '').slice(1)
             : rawName;
 
-          const partnerAvatar = res.match.partner.photoUrl || (partnerDisplayName.toLowerCase().includes('rahul')
+          const rawPhoto = res.match.partner.photoUrl;
+          const isValidPhoto =
+            rawPhoto &&
+            (rawPhoto.startsWith('http://') ||
+             rawPhoto.startsWith('https://') ||
+             rawPhoto.startsWith('data:image/'));
+
+          const partnerAvatar = isValidPhoto
+            ? rawPhoto
+            : (partnerDisplayName.toLowerCase().includes('rahul')
             ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80'
             : partnerDisplayName.toLowerCase().includes('priya')
             ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&auto=format&fit=crop&q=80'
@@ -429,16 +438,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setActivePartner(matchedPartner);
           setCallDuration(0);
 
-          // Connect WebSockets signaling room
+          // Connect WebSockets signaling room & broadcast real-time user profile for cross-device visibility
           if (user && res.match.roomName) {
             callSocketService.joinRoom(
               res.match.roomName,
               user.id,
               user.username,
+              {
+                id: user.id,
+                name: user.username,
+                username: user.username,
+                photoUrl: user.photoUrl,
+                avatar: user.photoUrl,
+                address: user.address,
+                education: user.education,
+                hobbies: user.hobbies,
+                bio: user.bio,
+                level: user.level,
+              },
               (readyData) => {
                 console.log('Room call-ready event received:', readyData);
               },
             );
+
+            // Listen for partner profile update right away
+            callSocketService.onPartnerProfile((partnerData: any) => {
+              if (partnerData) {
+                console.log('👤 [AppContext] Live partner profile synced over socket:', partnerData?.name);
+                setActivePartner((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    name: partnerData.name || partnerData.username || prev.name,
+                    avatar: partnerData.photoUrl || partnerData.avatar || prev.avatar,
+                    address: partnerData.address || prev.address,
+                    location: partnerData.address || prev.location,
+                    education: partnerData.education || prev.education,
+                    hobbies:
+                      partnerData.hobbies && partnerData.hobbies.length > 0
+                        ? partnerData.hobbies
+                        : prev.hobbies,
+                    level: partnerData.level ? `${partnerData.level} · Fluent` : prev.level,
+                  };
+                });
+              }
+            });
           }
         }
       }, 1500);

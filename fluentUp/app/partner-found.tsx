@@ -66,8 +66,10 @@ export default function PartnerFoundScreen() {
               <Image
                 source={{
                   uri:
-                    activePartner?.avatar ||
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+                    (activePartner?.avatar &&
+                      (activePartner.avatar.startsWith('http') || activePartner.avatar.startsWith('data:image/')))
+                      ? activePartner.avatar
+                      : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
                 }}
                 style={styles.avatarImg}
               />
