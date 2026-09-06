@@ -62,10 +62,10 @@ export default function VerifyEmailScreen() {
     });
   };
 
-  // Continue to Assessment flow once verified
+  // Continue directly to Home & Partner Matching
   const handleContinueToAssessment = () => {
     verifyEmail();
-    router.push('/assessment/intro');
+    router.replace('/(tabs)');
   };
 
   return (

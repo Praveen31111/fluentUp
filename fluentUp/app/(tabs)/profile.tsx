@@ -348,20 +348,22 @@ export default function ProfileScreen() {
 
             <View style={styles.menuDivider} />
 
-            <View style={styles.menuItem}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.menuItem}
+              onPress={() => router.push('/assessment/intro')}
+            >
               <View style={styles.menuLeft}>
-                <View style={styles.menuIconBg}>
-                  <MaterialIcons name="calendar-today" size={18} color={FluentColors.secondaryText} />
+                <View style={[styles.menuIconBg, { backgroundColor: FluentColors.primaryFixed }]}>
+                  <MaterialIcons name="spellcheck" size={18} color={FluentColors.primary} />
                 </View>
                 <View>
-                  <Text style={styles.menuTitle}>CEFR Calibration</Text>
-                  <Text style={styles.menuSub}>Diagnostic review cycle</Text>
+                  <Text style={styles.menuTitle}>Test English Level (Optional)</Text>
+                  <Text style={styles.menuSub}>Take quick test to recalibrate your level</Text>
                 </View>
               </View>
-              <View style={styles.cycleBadge}>
-                <Text style={styles.cycleBadgeText}>Next in 28 days</Text>
-              </View>
-            </View>
+              <MaterialIcons name="chevron-right" size={20} color={FluentColors.secondaryText} />
+            </TouchableOpacity>
           </View>
         </View>
 

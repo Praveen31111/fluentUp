@@ -521,18 +521,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuthToken(token);
     await AsyncStorage.setItem('fluentup_auth_token', token);
 
-    // Initial sign up: status is PENDING and email not verified yet
+    // Direct beginner-friendly onboarding: status is APPROVED immediately
     const newUser: UserProfile = {
       id: 'user_' + Date.now(),
       email,
-      username: email.split('@')[0] || 'New Learner',
+      username: email.split('@')[0] || 'Learner',
       level: 'B1',
-      assessmentScore: 0,
-      status: 'PENDING',
-      isEmailVerified: false,
+      assessmentScore: 75,
+      status: 'APPROVED',
+      isEmailVerified: true,
       totalSessions: 0,
       totalMinutes: 0,
-      topTopic: 'Everyday English',
+      topTopic: 'Everyday English & Conversations',
       photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
     };
     setUser(newUser);

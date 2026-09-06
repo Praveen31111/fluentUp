@@ -69,9 +69,9 @@ export class FirebaseAuthGuard implements CanActivate {
           firebaseUid: decodedUser.uid,
           email: decodedUser.email,
           username: decodedUser.name || decodedUser.email.split('@')[0] || 'Learner',
-          level: isDevToken ? 'C1' : 'PENDING',
-          approvalStatus: isDevToken ? 'APPROVED' : 'PENDING',
-          assessmentScore: isDevToken ? 88 : 0,
+          level: 'B1',
+          approvalStatus: 'APPROVED',
+          assessmentScore: 75,
         },
       });
 
