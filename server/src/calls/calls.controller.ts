@@ -11,18 +11,31 @@ import { User } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { FirebaseAuthGuard } from '../auth/guards/firebase-auth.guard';
 import { CallsService } from './calls.service';
+import { CallsGateway } from './calls.gateway';
 import { SubmitFeedbackDto } from './dto/call-feedback.dto';
 
 @Controller('calls')
-@UseGuards(FirebaseAuthGuard) // Saare call routes protected hone chahiye
 export class CallsController {
-  constructor(private readonly callsService: CallsService) {}
+  constructor(
+    private readonly callsService: CallsService,
+    private readonly callsGateway: CallsGateway,
+  ) {}
+
+  /**
+   * GET /api/calls/ice-servers
+   * Dynamic STUN/TURN configuration for mobile NAT traversal
+   */
+  @Get('ice-servers')
+  getIceServers() {
+    return this.callsService.getIceServers();
+  }
 
   /**
    * GET /api/calls/history
    * Logged-in user ke purane completed practice sessions ki list.
    */
   @Get('history')
+  @UseGuards(FirebaseAuthGuard)
   getHistory(@CurrentUser() user: User) {
     return this.callsService.getUserHistory(user.id);
   }
@@ -32,12 +45,15 @@ export class CallsController {
    * REST endpoint to end call session and credit practice minutes
    */
   @Post(':roomName/end')
-  endCall(
+  @UseGuards(FirebaseAuthGuard)
+  async endCall(
     @Param('roomName') roomName: string,
     @CurrentUser() user: User,
     @Body('durationSeconds') durationSeconds?: number,
   ) {
-    return this.callsService.endCallSession(roomName, user.id, durationSeconds);
+    const summary = await this.callsService.endCallSession(roomName, user.id, durationSeconds);
+    this.callsGateway.notifyCallEnded(roomName, user.id, summary);
+    return summary;
   }
 
   /**
@@ -45,6 +61,7 @@ export class CallsController {
    * Call khatam hone par 1 se 5 star rating submit karna.
    */
   @Post(':id/feedback')
+  @UseGuards(FirebaseAuthGuard)
   submitFeedback(
     @Param('id') callId: string,
     @CurrentUser() user: User,

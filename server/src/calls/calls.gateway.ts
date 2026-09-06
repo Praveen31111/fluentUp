@@ -43,6 +43,19 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(private readonly callsService: CallsService) {}
 
   /**
+   * Broadcast call ended to room participants from REST controller or internal service
+   */
+  notifyCallEnded(roomName: string, endedByUserId: string, summary: any) {
+    this.logger.log(`📢 Broadcasting call-ended to room: ${roomName} (ended by ${endedByUserId})`);
+    if (this.server) {
+      this.server.to(roomName).emit('call-ended', {
+        endedBy: endedByUserId,
+        summary,
+      });
+    }
+  }
+
+  /**
    * Client connected
    */
   handleConnection(client: Socket) {
@@ -66,8 +79,13 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (participants.size === 0) {
           this.roomParticipants.delete(roomName);
         } else {
-          // Partner ko inform karna ki partner disconnect ho gaya
-          client.to(roomName).emit('partner-disconnected', {
+          // Partner ko inform karna ki partner disconnect ho gaya aur call end karein
+          this.server.to(roomName).emit('call-ended', {
+            endedBy: userId,
+            reason: 'partner_disconnected',
+            message: 'Your conversation partner was disconnected.',
+          });
+          this.server.to(roomName).emit('partner-disconnected', {
             userId,
             message: 'Your conversation partner was disconnected.',
           });
@@ -177,7 +195,22 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * 6. Leave Room / End Call
+   * 6. Socket Heartbeat / Keepalive
+   * --------------------------------------------------------
+   * Render reverse proxy ke idle disconnect ko rokne ke liye
+   * client har 20s me ping bhejta hai.
+   */
+  @SubscribeMessage('heartbeat')
+  handleHeartbeat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomName: string; userId: string; timestamp?: number },
+  ) {
+    // Acknowledge heartbeat back to client
+    return { status: 'PONG', timestamp: Date.now() };
+  }
+
+  /**
+   * 7. Leave Room / End Call
    * --------------------------------------------------------
    * Call khatam hone par duration calculate karna, database update karna,
    * aur dono clients ko feedback screen par redirect karwana.

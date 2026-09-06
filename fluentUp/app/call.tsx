@@ -26,6 +26,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
+import { activateKeepAwakeAsync, deactivateKeepAwake, useKeepAwake } from 'expo-keep-awake';
 import { FluentColors } from '@/constants/theme';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { EndCallSheet } from '@/components/EndCallSheet';
@@ -34,6 +35,9 @@ import { callSocketService } from '@/services/socket';
 import { webrtcService } from '@/services/webrtc';
 
 export default function CallScreen() {
+  // Prevent screen from sleeping/locking during an active conversation
+  useKeepAwake();
+
   const router = useRouter();
   const {
     user,
@@ -45,6 +49,16 @@ export default function CallScreen() {
     toggleSpeaker,
     endCall,
   } = useApp();
+
+  // Explicitly activate KeepAwake tag to guarantee screen stays awake on all Android vendors
+  React.useEffect(() => {
+    activateKeepAwakeAsync('fluentup-call-screen').catch((err) => {
+      console.warn('Could not activate keep awake tag:', err);
+    });
+    return () => {
+      deactivateKeepAwake('fluentup-call-screen');
+    };
+  }, []);
 
   // End Call confirmation sheet visibility
   const [showEndSheet, setShowEndSheet] = useState<boolean>(false);
@@ -91,17 +105,31 @@ export default function CallScreen() {
     webrtcService.setSpeaker(isSpeakerOn);
   }, [isSpeakerOn]);
 
-  // 3. Socket event listeners for real-time room sync
+  // 4. Periodic heartbeat to prevent Render reverse-proxy idle socket timeout
+  React.useEffect(() => {
+    if (!activePartner?.roomName || !user?.id) return;
+
+    const heartbeatInterval = setInterval(() => {
+      callSocketService.sendHeartbeat(activePartner.roomName!, user.id);
+    }, 15000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [activePartner?.roomName, user?.id]);
+
+  // 5. Socket event listeners for real-time room sync & remote call end
   React.useEffect(() => {
     callSocketService.onPartnerMuteStatus((data) => {
       setIsPartnerMuted(data.isMuted);
     });
 
-    callSocketService.onCallEnded((data) => {
-      console.log('Call ended remotely by partner:', data);
+    const handleRemoteEnd = (data: any) => {
+      console.log('🛑 Call ended remotely (partner left or disconnected):', data);
       webrtcService.cleanup();
       router.replace('/feedback');
-    });
+    };
+
+    callSocketService.onCallEnded(handleRemoteEnd);
+    callSocketService.onPartnerDisconnected(handleRemoteEnd);
   }, [router]);
 
   // Confirm End Call -> Navigate to Feedback Screen

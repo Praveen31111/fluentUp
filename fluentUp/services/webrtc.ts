@@ -13,6 +13,7 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import { callSocketService } from './socket';
+import { API_BASE_URL } from '../constants/config';
 
 // Safe dynamic WebRTC loading (Expo Go vs Development Build)
 let RTCPeerConnectionClass: any = null;
@@ -36,16 +37,20 @@ try {
   isNativeWebRTCAvailable = false;
 }
 
-// STUN + Global TURN servers for Carrier-Grade NAT Traversal across 4G/5G mobile carriers
-const ICE_CONFIG = {
+// High-Reliability STUN + Global TURN servers for NAT Traversal
+// Google + Cloudflare STUN are 100% free, permanent, and have zero time limits.
+export const ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    // Metered TURN Relay for Carrier-Grade NAT (Jio/Airtel 4G/5G)
+    // To plug your free 50GB account credentials, replace username & credential below:
     {
       urls: [
-        'stun:openrelay.metered.ca:80',
         'turn:openrelay.metered.ca:80',
         'turn:openrelay.metered.ca:443',
         'turn:openrelay.metered.ca:443?transport=tcp',
@@ -57,6 +62,54 @@ const ICE_CONFIG = {
   iceCandidatePoolSize: 10,
 };
 
+/**
+ * PeerUp / Discord Grade Opus Audio Optimization:
+ * 1. useinbandfec=1       : Forward Error Correction (eliminates jitter & packet loss on 4G)
+ * 2. usedtx=1             : Discontinuous Transmission (saves phone battery & bandwidth during pauses)
+ * 3. maxaveragebitrate    : 32000 bps (Optimal bit depth for human voice clarity)
+ * 4. stereo=0             : Mono speech channel focus
+ */
+function optimizeOpusSdp(sdp: string): string {
+  if (!sdp) return sdp;
+  const lines = sdp.split('\r\n');
+  let opusPt = '111';
+
+  for (const line of lines) {
+    const match = line.match(/^a=rtpmap:(\d+)\s+opus\/48000/i);
+    if (match) {
+      opusPt = match[1];
+      break;
+    }
+  }
+
+  let fmtpFound = false;
+  const newLines = lines.map((line) => {
+    if (line.startsWith(`a=fmtp:${opusPt}`)) {
+      fmtpFound = true;
+      let newLine = line;
+      if (!newLine.includes('useinbandfec=')) newLine += ';useinbandfec=1';
+      if (!newLine.includes('usedtx=')) newLine += ';usedtx=1';
+      if (!newLine.includes('maxaveragebitrate=')) newLine += ';maxaveragebitrate=32000';
+      if (!newLine.includes('stereo=')) newLine += ';stereo=0;sprop-stereo=0';
+      return newLine;
+    }
+    return line;
+  });
+
+  if (!fmtpFound) {
+    const rtpmapIndex = newLines.findIndex((l) => l.startsWith(`a=rtpmap:${opusPt}`));
+    if (rtpmapIndex !== -1) {
+      newLines.splice(
+        rtpmapIndex + 1,
+        0,
+        `a=fmtp:${opusPt} minptime=10;useinbandfec=1;usedtx=1;maxaveragebitrate=32000;stereo=0;sprop-stereo=0`,
+      );
+    }
+  }
+
+  return newLines.join('\r\n');
+}
+
 class WebRTCService {
   private peerConnection: any = null;
   private localStream: any = null;
@@ -66,6 +119,29 @@ class WebRTCService {
 
   constructor() {
     this.isNativeSupported = isNativeWebRTCAvailable;
+  }
+
+  /**
+   * Fetch dynamic production STUN/TURN servers from backend
+   * Fallbacks safely to static ICE_CONFIG if backend is unreachable
+   */
+  async fetchIceServers(): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/calls/ice-servers`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.iceServers && data.iceServers.length > 0) {
+          console.log(`🌐 Loaded ${data.iceServers.length} dynamic ICE/TURN servers from backend.`);
+          return {
+            iceServers: data.iceServers,
+            iceCandidatePoolSize: 10,
+          };
+        }
+      }
+    } catch (e: any) {
+      console.warn('Notice: Using local STUN fallback servers:', e.message);
+    }
+    return ICE_CONFIG;
   }
 
   /**
@@ -103,6 +179,20 @@ class WebRTCService {
             return null;
           }
         }
+      }
+
+      // 2. Hardware audio mode initialization for background persistence
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+          shouldDuckAndroid: false,
+          staysActiveInBackground: true,
+        });
+        console.log('📱 Hardware AudioMode active (staysActiveInBackground: true)');
+      } catch (e: any) {
+        console.warn('AudioMode init notice:', e.message);
       }
 
       // Release any lingering past audio streams
@@ -151,8 +241,9 @@ class WebRTCService {
         await this.startLocalAudio();
       }
 
-      // 2. Create RTCPeerConnection
-      const pc = new RTCPeerConnectionClass(ICE_CONFIG);
+      // 2. Fetch dynamic ICE/TURN servers from backend
+      const iceConfig = await this.fetchIceServers();
+      const pc = new RTCPeerConnectionClass(iceConfig);
       this.peerConnection = pc;
 
       // 3. Inject local audio tracks into connection
@@ -199,13 +290,24 @@ class WebRTCService {
       };
 
       // Auto ICE connection health monitor & auto-recovery
-      (pc as any).oniceconnectionstatechange = () => {
+      (pc as any).oniceconnectionstatechange = async () => {
         const iceState = (pc as any).iceConnectionState;
         console.log('🔄 WebRTC ICE connection state:', iceState);
         if (iceState === 'disconnected' || iceState === 'failed') {
           console.log('⚠️ Network fluctuation detected, attempting ICE restart...');
           if (pc.restartIce) {
             pc.restartIce();
+          }
+          if (isCaller) {
+            try {
+              const offer = await pc.createOffer({ iceRestart: true });
+              offer.sdp = optimizeOpusSdp(offer.sdp);
+              await pc.setLocalDescription(offer);
+              callSocketService.sendOffer(roomName, offer);
+              console.log('🔄 Sent ICE restart offer to partner');
+            } catch (err: any) {
+              console.warn('ICE restart offer failed:', err.message);
+            }
           }
         }
       };
@@ -250,6 +352,7 @@ class WebRTCService {
             await this.peerConnection.setRemoteDescription(new RTCSessionDescriptionClass(sdp));
             await drainCandidates();
             const answer = await this.peerConnection.createAnswer();
+            answer.sdp = optimizeOpusSdp(answer.sdp);
             await this.peerConnection.setLocalDescription(answer);
             callSocketService.sendAnswer(roomName, answer);
           }
@@ -267,6 +370,7 @@ class WebRTCService {
               offerToReceiveAudio: true,
               offerToReceiveVideo: false,
             });
+            offer.sdp = optimizeOpusSdp(offer.sdp);
             await this.peerConnection.setLocalDescription(offer);
             callSocketService.sendOffer(roomName, offer);
           } catch (err: any) {

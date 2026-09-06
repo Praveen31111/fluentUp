@@ -325,6 +325,44 @@ export default function AuthScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Quick 2-Device Testing Helper (No Google needed) */}
+          <View style={styles.quickTestCard}>
+            <View style={styles.quickTestHeader}>
+              <MaterialIcons name="devices" size={16} color={FluentColors.primary} />
+              <Text style={styles.quickTestTitle}>Quick Test Login (2 Devices)</Text>
+            </View>
+            <Text style={styles.quickTestSub}>
+              Expo Go me Google login ke bina 1-tap me test karein:
+            </Text>
+            <View style={styles.quickTestBtnRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.quickDeviceBtn, { borderColor: FluentColors.primary }]}
+                onPress={async () => {
+                  await loginUser('praveen@fluentup.com');
+                  router.replace('/(tabs)');
+                }}
+              >
+                <Text style={[styles.quickDeviceText, { color: FluentColors.primary }]}>
+                  📱 Device 1 (Praveen)
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[styles.quickDeviceBtn, { borderColor: '#10B981' }]}
+                onPress={async () => {
+                  await loginUser('rahul@fluentup.com');
+                  router.replace('/(tabs)');
+                }}
+              >
+                <Text style={[styles.quickDeviceText, { color: '#10B981' }]}>
+                  📱 Device 2 (Rahul)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Quiet Legal Footnote */}
           <Text style={styles.legalDisclaimer}>
             By continuing, you agree to our{' '}
@@ -612,6 +650,48 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: FluentColors.text,
+  },
+  quickTestCard: {
+    backgroundColor: FluentColors.surfaceLowest,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: FluentColors.outline,
+  },
+  quickTestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  quickTestTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: FluentColors.text,
+  },
+  quickTestSub: {
+    fontSize: 11,
+    color: FluentColors.secondaryText,
+    marginBottom: 12,
+  },
+  quickTestBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  quickDeviceBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    backgroundColor: FluentColors.surfaceContainerLow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickDeviceText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   legalDisclaimer: {
     fontSize: 12,

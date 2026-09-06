@@ -60,7 +60,20 @@ class CallSocketService {
   onCallEnded(callback: (data: any) => void) {
     if (this.socket) {
       this.socket.off('call-ended');
-      this.socket.on('call-ended', callback);
+      this.socket.on('call-ended', (data) => {
+        console.log('🛑 [Socket] call-ended event received from server:', data);
+        callback(data);
+      });
+    }
+  }
+
+  onPartnerDisconnected(callback: (data: any) => void) {
+    if (this.socket) {
+      this.socket.off('partner-disconnected');
+      this.socket.on('partner-disconnected', (data) => {
+        console.log('⚠️ [Socket] partner-disconnected event received from server:', data);
+        callback(data);
+      });
     }
   }
 
@@ -113,6 +126,12 @@ class CallSocketService {
         isMuted,
         userId,
       });
+    }
+  }
+
+  sendHeartbeat(roomName: string, userId: string) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('heartbeat', { roomName, userId, timestamp: Date.now() });
     }
   }
 
