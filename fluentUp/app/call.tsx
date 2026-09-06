@@ -22,6 +22,8 @@ import {
   TouchableOpacity,
   StatusBar,
   Image,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -215,6 +217,40 @@ export default function CallScreen() {
     callSocketService.onCallEnded(handleRemoteEnd);
     callSocketService.onPartnerDisconnected(handleRemoteEnd);
   }, [router]);
+
+  // 6. Seamless Background Audio: Call continues uninterrupted when user opens another app
+  React.useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      console.log('📱 AppState changed to:', nextAppState);
+      if (nextAppState === 'active') {
+        // User returned to FluentUp, re-attach socket signaling if dropped
+        if (activePartner?.roomName && user?.id) {
+          callSocketService.joinRoom(
+            activePartner.roomName,
+            user.id,
+            user.username || 'Learner',
+            {
+              id: user.id,
+              name: user.username,
+              username: user.username,
+              photoUrl: user.photoUrl,
+              avatar: user.photoUrl,
+              address: user.address,
+              education: user.education,
+              hobbies: user.hobbies,
+              bio: user.bio,
+              level: user.level,
+            },
+          );
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [activePartner?.roomName, user]);
 
   // Combined real-time partner data
   const displayPartner = livePartner || activePartner;

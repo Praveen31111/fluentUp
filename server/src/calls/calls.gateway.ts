@@ -43,6 +43,9 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Real-time live profile store per room: roomName -> (userId -> userProfile)
   private roomProfiles = new Map<string, Map<string, any>>();
 
+  // Background app-switch & network handover grace period: key = `${roomName}:${userId}`
+  private disconnectGraceTimeouts = new Map<string, NodeJS.Timeout>();
+
   constructor(private readonly callsService: CallsService) {}
 
   /**
@@ -66,7 +69,8 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * Client disconnected (Unexpected network drop ya app minimize)
+   * Client disconnected (e.g. backgrounding, app switch, temporary network fluctuation)
+   * 35s Grace Period: Does NOT kill the call immediately so P2P audio continues while user uses other apps.
    */
   async handleDisconnect(client: Socket) {
     this.logger.log(`🔴 Socket disconnected: ${client.id}`);
@@ -79,11 +83,29 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const participants = this.roomParticipants.get(roomName);
       if (participants) {
         participants.delete(client.id);
-        if (participants.size === 0) {
+      }
+
+      const graceKey = `${roomName}:${userId}`;
+      if (this.disconnectGraceTimeouts.has(graceKey)) {
+        clearTimeout(this.disconnectGraceTimeouts.get(graceKey)!);
+      }
+
+      this.logger.log(
+        `⏳ User ${userId} disconnected from room ${roomName}. Starting 35s background grace period. WebRTC audio remains active.`,
+      );
+
+      // 35 seconds grace period before terminating call session
+      const timeout = setTimeout(async () => {
+        this.disconnectGraceTimeouts.delete(graceKey);
+        this.logger.log(
+          `⏰ Grace period expired for user ${userId} in room ${roomName}. Ending session.`,
+        );
+
+        const currentParticipants = this.roomParticipants.get(roomName);
+        if (!currentParticipants || currentParticipants.size === 0) {
           this.roomParticipants.delete(roomName);
           this.roomProfiles.delete(roomName);
         } else {
-          // Partner ko inform karna ki partner disconnect ho gaya aur call end karein
           this.server.to(roomName).emit('call-ended', {
             endedBy: userId,
             reason: 'partner_disconnected',
@@ -94,10 +116,11 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
             message: 'Your conversation partner was disconnected.',
           });
         }
-      }
 
-      // Call session end karke minutes save karna
-      await this.callsService.endCallSession(roomName, userId);
+        await this.callsService.endCallSession(roomName, userId);
+      }, 35000);
+
+      this.disconnectGraceTimeouts.set(graceKey, timeout);
     }
   }
 
@@ -113,6 +136,15 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const { roomName, userId, username, userProfile } = payload;
     client.join(roomName);
+
+    // Cancel any pending disconnect grace timeout if user resumed from background
+    const graceKey = `${roomName}:${userId}`;
+    const pendingTimeout = this.disconnectGraceTimeouts.get(graceKey);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+      this.disconnectGraceTimeouts.delete(graceKey);
+      this.logger.log(`🟢 User ${userId} reconnected to room ${roomName} from background! Call continuing.`);
+    }
 
     if (!this.roomParticipants.has(roomName)) {
       this.roomParticipants.set(roomName, new Set());
@@ -247,6 +279,14 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomName: string; userId: string; timestamp?: number },
   ) {
+    if (payload.roomName && payload.userId) {
+      const graceKey = `${payload.roomName}:${payload.userId}`;
+      const pendingTimeout = this.disconnectGraceTimeouts.get(graceKey);
+      if (pendingTimeout) {
+        clearTimeout(pendingTimeout);
+        this.disconnectGraceTimeouts.delete(graceKey);
+      }
+    }
     // Acknowledge heartbeat back to client
     return { status: 'PONG', timestamp: Date.now() };
   }
@@ -264,6 +304,13 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const { roomName, userId, durationSec } = payload;
     this.logger.log(`🛑 User ${userId} requested to end call in room: ${roomName}`);
+
+    const graceKey = `${roomName}:${userId}`;
+    const pendingTimeout = this.disconnectGraceTimeouts.get(graceKey);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+      this.disconnectGraceTimeouts.delete(graceKey);
+    }
 
     // Database mein call complete mark karna aur minutes add karna
     const summary = await this.callsService.endCallSession(roomName, userId, durationSec);
