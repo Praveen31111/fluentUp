@@ -99,32 +99,22 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
    * User ko 30s matching radar queue mein enter karta hai.
    */
   async joinQueue(user: User): Promise<{ status: string; message: string; elapsedSeconds: number; match?: MatchResult }> {
-    // Check 1: User approved hona chahiye (Beginners are rejected)
-    if (user.approvalStatus !== ApprovalStatus.APPROVED) {
-      throw new ForbiddenException(
-        'You must complete and pass the English fluency assessment to join matchmaking.',
-      );
-    }
-
-    // Check 2: Level valid hona chahiye (B1, B2, C1)
-    if (
-      user.level === FluencyLevel.PENDING ||
-      user.level === FluencyLevel.A1 ||
-      user.level === FluencyLevel.A2
-    ) {
-      throw new ForbiddenException('Only intermediate & advanced levels (B1+) are supported.');
-    }
-
-    // Check 3: Agar user ka already koi active match ready hai
+    // Check 1: Agar user ka already koi active match ready hai
     const existingMatch = await this.getMatchForUser(user.id);
     if (existingMatch) {
       return { status: 'MATCHED', message: 'Partner already matched!', match: existingMatch, elapsedSeconds: 0 };
     }
 
+    // Auto-calibrate beginner level so all users can practice freely
+    const effectiveLevel =
+      user.level === FluencyLevel.PENDING || !user.level
+        ? FluencyLevel.B1
+        : user.level;
+
     const learner: QueuedLearner = {
       userId: user.id,
       username: user.username,
-      level: user.level,
+      level: effectiveLevel,
       joinedAt: Date.now(),
       photoUrl: (user as any).photoUrl || null,
       address: (user as any).address || null,
@@ -303,35 +293,44 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    // Learner A ke liye match payload
+    // Fresh user profiles fetch karein taaki updated photoUrl, address, hobbies dono partners ko live dikhein
+    const [dbUserA, dbUserB] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: learnerA.userId } }),
+      this.prisma.user.findUnique({ where: { id: learnerB.userId } }),
+    ]);
+
+    const actualA = dbUserA || learnerA;
+    const actualB = dbUserB || learnerB;
+
+    // Learner A ke liye match payload (User B ka updated profile dikhayega)
     const matchForA: MatchResult = {
       callId: callRecord.id,
       roomName,
       topic: randomTopic,
       partner: {
         id: learnerB.userId,
-        name: learnerB.username,
-        level: learnerB.level,
-        photoUrl: learnerB.photoUrl || null,
-        address: learnerB.address || null,
-        education: learnerB.education || null,
-        hobbies: learnerB.hobbies || [],
+        name: (actualB as any).username || learnerB.username,
+        level: (actualB as any).level || learnerB.level,
+        photoUrl: (actualB as any).photoUrl || learnerB.photoUrl || null,
+        address: (actualB as any).address || learnerB.address || null,
+        education: (actualB as any).education || learnerB.education || null,
+        hobbies: (actualB as any).hobbies && (actualB as any).hobbies.length > 0 ? (actualB as any).hobbies : learnerB.hobbies,
       },
     };
 
-    // Learner B ke liye match payload
+    // Learner B ke liye match payload (User A ka updated profile dikhayega)
     const matchForB: MatchResult = {
       callId: callRecord.id,
       roomName,
       topic: randomTopic,
       partner: {
         id: learnerA.userId,
-        name: learnerA.username,
-        level: learnerA.level,
-        photoUrl: learnerA.photoUrl || null,
-        address: learnerA.address || null,
-        education: learnerA.education || null,
-        hobbies: learnerA.hobbies || [],
+        name: (actualA as any).username || learnerA.username,
+        level: (actualA as any).level || learnerA.level,
+        photoUrl: (actualA as any).photoUrl || learnerA.photoUrl || null,
+        address: (actualA as any).address || learnerA.address || null,
+        education: (actualA as any).education || learnerA.education || null,
+        hobbies: (actualA as any).hobbies && (actualA as any).hobbies.length > 0 ? (actualA as any).hobbies : learnerA.hobbies,
       },
     };
 

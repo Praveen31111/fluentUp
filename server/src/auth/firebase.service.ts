@@ -127,10 +127,18 @@ export class FirebaseService implements OnModuleInit {
     // 1. Agar mock mode hai ya development test token bheja gaya hai
     if (this.isMockMode || token.startsWith('mock-token-') || token.startsWith('dev-token-')) {
       const mockUid = token.replace('mock-token-', '').replace('dev-token-', '') || 'test_user_1';
+      let resolvedEmail = mockUid;
+      if (mockUid.includes('__at__')) {
+        resolvedEmail = mockUid.replace('__at__', '@');
+      } else if (!mockUid.includes('@')) {
+        resolvedEmail = `${mockUid}@gmail.com`;
+      }
+      const resolvedName = resolvedEmail.split('@')[0];
+      const displayName = resolvedName.charAt(0).toUpperCase() + resolvedName.slice(1);
       return {
         uid: `dev_${mockUid}`,
-        email: `${mockUid}@fluentup.dev`,
-        name: `Learner ${mockUid}`,
+        email: resolvedEmail,
+        name: displayName,
       };
     }
 

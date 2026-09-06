@@ -14,6 +14,7 @@ import { PermissionsAndroid, Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import { callSocketService } from './socket';
 import { API_BASE_URL } from '../constants/config';
+import { detectAudioDevices, setPreferredAudioInput } from './audioDevice';
 
 // Safe dynamic WebRTC loading (Expo Go vs Development Build)
 let RTCPeerConnectionClass: any = null;
@@ -464,7 +465,18 @@ class WebRTCService {
           shouldDuckAndroid: false,
           staysActiveInBackground: true,
         });
-        console.log('🎧 Hardware audio routed to: BLUETOOTH / HEADSET');
+
+        // Set hardware recording device specifically to connected headset mic
+        try {
+          const status = await detectAudioDevices();
+          if (status.hasHeadset && status.headsetUid) {
+            await setPreferredAudioInput(status.headsetUid);
+          }
+        } catch (inputErr) {
+          // Fallback gracefully
+        }
+
+        console.log('🎧 Hardware audio & mic routed to: EARPHONE / BLUETOOTH');
       }
     } catch (e: any) {
       console.warn('Could not set audio route mode:', e.message);

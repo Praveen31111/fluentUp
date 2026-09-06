@@ -21,7 +21,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
 import {
   GoogleSignin,
@@ -41,10 +41,11 @@ GoogleSignin.configure({
 
 export default function AuthScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const { signupUser, loginUser, updateUserProfile } = useApp();
 
-  // Mode: Sign Up vs Sign In
-  const [isSignUp, setIsSignUp] = useState<boolean>(true);
+  // Mode: Sign Up vs Sign In (Query param support e.g. /auth?mode=signin)
+  const [isSignUp, setIsSignUp] = useState<boolean>(params.mode !== 'signin');
 
   // Form Fields (Empty for real users)
   const [email, setEmail] = useState<string>('');
@@ -114,11 +115,11 @@ export default function AuthScreen() {
     setErrorMessage('');
 
     if (isSignUp) {
-      // New user registration -> Navigate to Email Verification
+      // New user registration -> Immediate account creation & direct entry to Home
       await signupUser(email.trim());
-      router.push('/verify-email');
+      router.replace('/(tabs)');
     } else {
-      // Existing user sign-in -> Connect to Live Profile
+      // Existing user sign-in -> Connect to Live Profile & direct entry to Home
       await loginUser(email.trim());
       router.replace('/(tabs)');
     }

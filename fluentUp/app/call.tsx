@@ -75,6 +75,8 @@ export default function CallScreen() {
     callDuration,
     isMuted,
     audioRoute,
+    hasHeadsetConnected,
+    headsetName,
     toggleMute,
     toggleSpeaker,
     endCall,
@@ -300,7 +302,7 @@ export default function CallScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* 2. Audio Route Switcher (Bluetooth / Speaker / Earpiece) */}
+            {/* 2. Audio Route Switcher (Dynamic Earphone / Speaker / Earpiece) */}
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.dockButton}
@@ -309,24 +311,30 @@ export default function CallScreen() {
               <View
                 style={[
                   styles.btnCircle,
-                  audioRoute !== 'earpiece' ? styles.btnCircleSpeakerActive : styles.btnCircleDefault,
+                  (audioRoute === 'speaker' || (hasHeadsetConnected && audioRoute === 'bluetooth'))
+                    ? styles.btnCircleSpeakerActive
+                    : styles.btnCircleDefault,
                 ]}
               >
                 <MaterialIcons
                   name={
-                    audioRoute === 'bluetooth'
+                    hasHeadsetConnected && audioRoute === 'bluetooth'
                       ? 'headset'
                       : audioRoute === 'speaker'
                       ? 'volume-up'
                       : 'phone-in-talk'
                   }
                   size={24}
-                  color={audioRoute !== 'earpiece' ? FluentColors.primaryContainer : FluentColors.secondaryText}
+                  color={
+                    (audioRoute === 'speaker' || (hasHeadsetConnected && audioRoute === 'bluetooth'))
+                      ? FluentColors.primaryContainer
+                      : FluentColors.secondaryText
+                  }
                 />
               </View>
               <Text style={styles.btnLabel}>
-                {audioRoute === 'bluetooth'
-                  ? 'Bluetooth'
+                {hasHeadsetConnected && audioRoute === 'bluetooth'
+                  ? 'Earphone'
                   : audioRoute === 'speaker'
                   ? 'Speaker'
                   : 'Earpiece'}

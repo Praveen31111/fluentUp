@@ -79,7 +79,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.primaryBtn}
-            onPress={() => router.push('/auth')}
+            onPress={() => router.push({ pathname: '/auth', params: { mode: 'signup' } })}
           >
             <Text style={styles.primaryBtnText}>Get started</Text>
             <MaterialIcons name="arrow-forward" size={18} color={FluentColors.onPrimary} />
@@ -89,7 +89,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             activeOpacity={0.7}
             style={styles.secondaryLink}
-            onPress={() => router.push('/auth')}
+            onPress={() => router.push({ pathname: '/auth', params: { mode: 'signin' } })}
           >
             <Text style={styles.secondaryLinkText}>
               Already a member? <Text style={styles.secondaryLinkBold}>Sign in</Text>

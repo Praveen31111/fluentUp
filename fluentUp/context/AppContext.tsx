@@ -10,6 +10,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssessmentApi, AuthApi, CallsApi, MatchmakingApi } from '../services/api';
 import { callSocketService } from '../services/socket';
+import { detectAudioDevices } from '../services/audioDevice';
 
 // CEFR Fluency Levels
 export type FluencyLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
@@ -110,6 +111,8 @@ interface AppContextType {
   isMuted: boolean;
   isSpeakerOn: boolean;
   audioRoute: 'speaker' | 'earpiece' | 'bluetooth';
+  hasHeadsetConnected: boolean;
+  headsetName: string | null;
   toggleMute: () => void;
   toggleSpeaker: () => void;
   setAudioRoute: (route: 'speaker' | 'earpiece' | 'bluetooth') => void;
@@ -317,18 +320,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     photoUrl?: string;
   }): Promise<boolean> => {
     try {
-      // 1. Mobile se upload hui photo ko phone ki local storage mein save karein (Zero DB overhead)
+      // 1. Mobile se upload hui photo ko phone ki local storage mein cache karein
       if (data.photoUrl) {
         await AsyncStorage.setItem('fluentup_user_local_photo', data.photoUrl);
       }
 
-      // 2. Database mein sirf text details save karein (Address, Education, Hobbies, Bio, Username)
+      // 2. Neon PostgreSQL Database mein details aur photoUrl save karein (Live partner sync)
       await AuthApi.updateProfile(authToken, {
         username: data.username,
         address: data.address,
         education: data.education,
         hobbies: data.hobbies,
         bio: data.bio,
+        photoUrl: data.photoUrl,
       });
 
       // 3. React context state ko instantly update karein aur AsyncStorage mein persist karein
@@ -462,17 +466,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [activePartner]);
 
+  // Safe Token Formatter preserving real email across accounts
+  const formatAuthToken = (email: string) => {
+    const safeEmail = email.toLowerCase().trim().replace(/@/g, '__at__').replace(/[^a-zA-Z0-9_.]/g, '_');
+    return `dev-token-${safeEmail}`;
+  };
+
   // Auth: Login User with live server sync
   const loginUser = async (email: string) => {
-    const cleanId = email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_');
-    const token = `dev-token-${cleanId}`;
+    const token = formatAuthToken(email);
     setAuthToken(token);
     await AsyncStorage.setItem('fluentup_auth_token', token);
-
-    let localPhoto: string | null = null;
-    try {
-      localPhoto = await AsyncStorage.getItem('fluentup_user_local_photo');
-    } catch (e) {}
 
     const remoteUser = await AuthApi.getMe(token);
     if (remoteUser) {
@@ -491,7 +495,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         education: remoteUser.education || '',
         hobbies: (remoteUser.hobbies && remoteUser.hobbies.length > 0) ? remoteUser.hobbies : ['English Practice'],
         bio: remoteUser.bio || '',
-        photoUrl: localPhoto || remoteUser.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+        photoUrl: remoteUser.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
       };
       setUser(loggedUser);
       await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(loggedUser));
@@ -514,29 +518,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Auth: Sign Up User
+  // Auth: Sign Up User (Direct account creation with immediate database registration)
   const signupUser = async (email: string) => {
-    const cleanId = email.toLowerCase().trim().replace(/[^a-zA-Z0-9]/g, '_');
-    const token = `dev-token-${cleanId}`;
+    const token = formatAuthToken(email);
     setAuthToken(token);
     await AsyncStorage.setItem('fluentup_auth_token', token);
 
-    // Direct beginner-friendly onboarding: status is APPROVED immediately
-    const newUser: UserProfile = {
-      id: 'user_' + Date.now(),
-      email,
-      username: email.split('@')[0] || 'Learner',
-      level: 'B1',
-      assessmentScore: 75,
-      status: 'APPROVED',
-      isEmailVerified: true,
-      totalSessions: 0,
-      totalMinutes: 0,
-      topTopic: 'Everyday English & Conversations',
-      photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
-    };
-    setUser(newUser);
-    await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(newUser));
+    // Call server immediately to create record in database
+    const remoteUser = await AuthApi.getMe(token);
+    if (remoteUser) {
+      const newUser: UserProfile = {
+        id: remoteUser.id,
+        email: remoteUser.email,
+        username: remoteUser.username || email.split('@')[0] || 'Learner',
+        level: (remoteUser.level || 'B1') as FluencyLevel,
+        assessmentScore: remoteUser.assessmentScore || 75,
+        status: (remoteUser.approvalStatus || 'APPROVED') as ApprovalStatus,
+        isEmailVerified: true,
+        totalSessions: 0,
+        totalMinutes: 0,
+        topTopic: 'Everyday English & Conversations',
+        photoUrl: remoteUser.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+      };
+      setUser(newUser);
+      await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(newUser));
+    } else {
+      const newUser: UserProfile = {
+        id: 'user_' + Date.now(),
+        email,
+        username: email.split('@')[0] || 'Learner',
+        level: 'B1',
+        assessmentScore: 75,
+        status: 'APPROVED',
+        isEmailVerified: true,
+        totalSessions: 0,
+        totalMinutes: 0,
+        topTopic: 'Everyday English & Conversations',
+        photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&auto=format&fit=crop&q=80',
+      };
+      setUser(newUser);
+      await AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(newUser));
+    }
   };
 
   // Auth: Verify Email
@@ -550,13 +572,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Auth: Logout User
+  // Auth: Logout User (Wipes tokens and cached profiles so switching accounts is 100% clean)
   const logoutUser = async () => {
     setUser(null);
     setAuthToken('');
     try {
       await AsyncStorage.removeItem('fluentup_auth_token');
       await AsyncStorage.removeItem('fluentup_user_profile');
+      await AsyncStorage.removeItem('fluentup_user_local_photo');
     } catch (e) {
       console.warn('Failed to remove storage on logout:', e);
     }
@@ -671,8 +694,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Audio Call: Audio Route (Speaker, Bluetooth, Earpiece)
-  const [audioRoute, setAudioRouteState] = useState<'speaker' | 'earpiece' | 'bluetooth'>('bluetooth');
+  // Audio Call: Audio Route (Speaker, Bluetooth/Earphone, Earpiece)
+  const [audioRoute, setAudioRouteState] = useState<'speaker' | 'earpiece' | 'bluetooth'>('speaker');
+  const [hasHeadsetConnected, setHasHeadsetConnected] = useState<boolean>(false);
+  const [headsetName, setHeadsetName] = useState<string | null>(null);
+
+  // Live Hardware Audio Device Listener (checks for wired earphones & Bluetooth neckbands)
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkDevices = async () => {
+      try {
+        const status = await detectAudioDevices();
+        if (isMounted) {
+          setHasHeadsetConnected(status.hasHeadset);
+          setHeadsetName(status.headsetName);
+
+          // Agar user ne earphone/neckband plug ya connect kiya, toh automatically earphone route karein
+          if (status.hasHeadset && audioRoute !== 'bluetooth' && audioRoute !== 'earpiece') {
+            setAudioRouteState('bluetooth');
+            setIsSpeakerOn(false);
+          } else if (!status.hasHeadset && audioRoute === 'bluetooth') {
+            // Disconnect hone par fallback to loudspeaker
+            setAudioRouteState('speaker');
+            setIsSpeakerOn(true);
+          }
+        }
+      } catch (e) {}
+    };
+
+    checkDevices();
+    const interval = setInterval(checkDevices, 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [audioRoute]);
 
   const setAudioRoute = (route: 'speaker' | 'earpiece' | 'bluetooth') => {
     setAudioRouteState(route);
@@ -680,9 +737,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cycleAudioRoute = () => {
-    // Cycles: Bluetooth -> Speaker -> Earpiece -> Bluetooth
     setAudioRouteState((prev) => {
-      const next = prev === 'bluetooth' ? 'speaker' : prev === 'speaker' ? 'earpiece' : 'bluetooth';
+      let next: 'speaker' | 'earpiece' | 'bluetooth';
+      if (hasHeadsetConnected) {
+        // Earphone/Neckband connected hai -> Earphone -> Speaker -> Earpiece -> Earphone
+        next = prev === 'bluetooth' ? 'speaker' : prev === 'speaker' ? 'earpiece' : 'bluetooth';
+      } else {
+        // Earphone connect nahi hai -> Sirf Speaker <-> Earpiece toggle
+        next = prev === 'speaker' ? 'earpiece' : 'speaker';
+      }
       setIsSpeakerOn(next === 'speaker');
       return next;
     });
@@ -755,6 +818,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isMuted,
         isSpeakerOn,
         audioRoute,
+        hasHeadsetConnected,
+        headsetName,
         toggleMute,
         toggleSpeaker,
         setAudioRoute,
