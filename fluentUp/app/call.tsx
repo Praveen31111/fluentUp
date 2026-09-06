@@ -24,6 +24,7 @@ import {
   Image,
   AppState,
   AppStateStatus,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -89,6 +90,20 @@ export default function CallScreen() {
     safeKeepAwake.activate();
     return () => {
       safeKeepAwake.deactivate();
+    };
+  }, []);
+
+  // Intercept Android slider back gesture / hardware back button to prevent accidental call drop
+  React.useEffect(() => {
+    const onBackPress = () => {
+      // Accidental back slider gesture opens EndCallSheet instead of abruptly killing call
+      setShowEndSheet(true);
+      return true; // Prevents default navigation pop / unmount
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => {
+      backHandler.remove();
     };
   }, []);
 
