@@ -1,24 +1,23 @@
 // ========================================================
-// FluentUp - Matchmaking Service & Redis Matching Worker
+// FluentUp - Matchmaking Service & Live Presence Engine
 // ========================================================
 // Yeh service 30-second peer-to-peer matchmaking queue chalati hai:
-// 1. Approved users ko queue mein add karna.
-// 2. Tiered matching algorithm (Exact -> Adjacent -> Cross-Level).
-// 3. Conversation starter topic aur unique room generate karna.
-// 4. Neon DB calls table mein record create karna.
-// 5. Upstash Redis + In-Memory Fallback dual-engine support.
+// 1. Strict Heartbeat Presence: Only users actively on the radar screen (within 5s) are matched.
+// 2. Offline / closed-app users are immediately pruned and NEVER matched.
+// 3. Busy Call Exclusion: Users in active conversations cannot be matched.
+// 4. Stale Match Auto-Purge: Clean match consumption prevents ghost reconnects.
+// 5. Tiered matching algorithm (Exact -> Adjacent -> Cross-Level).
+// 6. Upstash Redis + In-Memory Dual Engine with background garbage collection.
 // ========================================================
 
 import {
-  BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApprovalStatus, FluencyLevel, User } from '@prisma/client';
+import { CallStatus, FluencyLevel, User } from '@prisma/client';
 import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { SafetyService } from '../safety/safety.service';
@@ -32,9 +31,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   private redisClient: Redis | null = null;
   private isRedisConnected = false;
 
-  // In-Memory Fallback Data Stores (Agar Redis kisi waqt unreachable ho)
+  // In-Memory Fallback Data Stores (Dual Engine with TTL & GC)
   private memoryQueue = new Map<string, QueuedLearner>();
-  private memoryMatches = new Map<string, MatchResult>();
+  private memoryMatches = new Map<string, { match: MatchResult; createdAt: number }>();
+
+  // Periodic garbage collector interval
+  private cleanupInterval: any = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -42,17 +44,18 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     private readonly safetyService: SafetyService,
   ) {}
 
-  /**
-   * Application start hote hi Upstash Redis se connect hona
-   */
   async onModuleInit() {
     await this.initRedis();
+    // Run background garbage collector every 3.5 seconds
+    this.cleanupInterval = setInterval(() => {
+      this.runGarbageCollector();
+    }, 3500);
   }
 
-  /**
-   * Application band hote hi Redis connection close karna
-   */
   async onModuleDestroy() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
     if (this.redisClient) {
       await this.redisClient.quit();
       this.logger.log('🔌 Disconnected from Upstash Redis');
@@ -65,14 +68,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     if (redisUrl && redisUrl.startsWith('rediss://')) {
       try {
         this.redisClient = new Redis(redisUrl, {
-          tls: { rejectUnauthorized: false }, // Upstash SSL requirement
+          tls: { rejectUnauthorized: false },
           maxRetriesPerRequest: null,
           connectTimeout: 10000,
-          keepAlive: 10000, // Sends TCP keepalive so Upstash does not drop idle connection
+          keepAlive: 10000,
           retryStrategy(times) {
-            // Reconnect smoothly with backoff (max 5s)
-            const delay = Math.min(times * 1000, 5000);
-            return delay;
+            return Math.min(times * 1000, 5000);
           },
         });
 
@@ -94,60 +95,128 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Background Garbage Collector
+   * Purges users who closed their app (no heartbeat in 5s) and matches older than 20s.
+   */
+  private runGarbageCollector() {
+    const now = Date.now();
+
+    // 1. Purge dead queue entries
+    for (const [userId, learner] of this.memoryQueue.entries()) {
+      const inactiveDuration = now - (learner.lastActiveAt || learner.joinedAt);
+      const totalWait = now - learner.joinedAt;
+      if (inactiveDuration > 5000 || totalWait > 35000) {
+        this.memoryQueue.delete(userId);
+      }
+    }
+
+    // 2. Purge stale matches
+    for (const [userId, matchEntry] of this.memoryMatches.entries()) {
+      if (now - matchEntry.createdAt > 20000) {
+        this.memoryMatches.delete(userId);
+      }
+    }
+  }
+
+  /**
+   * Check if a user is currently talking in an active ongoing call
+   */
+  public async isUserInActiveCall(userId: string): Promise<boolean> {
+    try {
+      const activeCall = await this.prisma.call.findFirst({
+        where: {
+          OR: [{ userAId: userId }, { userBId: userId }],
+          status: CallStatus.ACTIVE,
+        },
+        select: { id: true, startedAt: true },
+      });
+
+      if (activeCall) {
+        const callAgeMinutes = (Date.now() - activeCall.startedAt.getTime()) / (1000 * 60);
+        // Calls over 45 minutes are treated as abandoned/finished
+        if (callAgeMinutes < 45) {
+          return true;
+        }
+      }
+    } catch (e) {
+      // Ignored
+    }
+    return false;
+  }
+
+  /**
+   * Clear any active or stale match and queue entries for a user
+   */
+  public async clearMatchForUser(userId: string) {
+    this.memoryMatches.delete(userId);
+    this.memoryQueue.delete(userId);
+    if (this.isRedisConnected && this.redisClient) {
+      try {
+        await this.redisClient.del(`fluentup:match:${userId}`);
+        await this.redisClient.del(`fluentup:queue:${userId}`);
+      } catch (e) {
+        // Ignored
+      }
+    }
+  }
+
+  /**
    * 1. Join Matchmaking Queue
    * --------------------------------------------------------
    * User ko 30s matching radar queue mein enter karta hai.
+   * Purane stale matches wipe karke bilkul fresh search shuru karta hai.
    */
   async joinQueue(user: User): Promise<{ status: string; message: string; elapsedSeconds: number; match?: MatchResult }> {
-    // Check 1: Agar user ka already koi active match ready hai
-    const existingMatch = await this.getMatchForUser(user.id);
-    if (existingMatch) {
-      return { status: 'MATCHED', message: 'Partner already matched!', match: existingMatch, elapsedSeconds: 0 };
-    }
+    // Step 1: Wipe any old/stale matches so user is not reconnected to past callers
+    await this.clearMatchForUser(user.id);
 
-    // Auto-calibrate beginner level so all users can practice freely
+    // Step 2: Auto-calibrate beginner level so all users can practice freely
     const effectiveLevel =
       user.level === FluencyLevel.PENDING || !user.level
         ? FluencyLevel.B1
         : user.level;
 
+    const now = Date.now();
     const learner: QueuedLearner = {
       userId: user.id,
       username: user.username,
       level: effectiveLevel,
-      joinedAt: Date.now(),
+      joinedAt: now,
+      lastActiveAt: now,
       photoUrl: (user as any).photoUrl || null,
       address: (user as any).address || null,
       education: (user as any).education || null,
       hobbies: (user as any).hobbies || [],
     };
 
-    // Step 4: Queue mein pehle se maujood users ke saath match dhoondhna
+    // Step 3: Check for an active, online candidate already waiting in queue
     const matchedPartner = await this.findBestMatch(learner);
 
     if (matchedPartner) {
-      // 🎉 Match mil gaya!
-      await this.createMatchSession(learner, matchedPartner);
-      return { status: 'MATCHED', message: 'Partner found! Initializing call...', elapsedSeconds: 0 };
+      // 🎉 Real active partner found!
+      const matchResult = await this.createMatchSession(learner, matchedPartner);
+      return { status: 'MATCHED', message: 'Partner found! Initializing call...', match: matchResult, elapsedSeconds: 0 };
     }
 
     // Agar abhi koi match nahi mila toh user ko queue mein add karein
     await this.addLearnerToQueue(learner);
-    this.logger.log(`👤 User ${user.username} (${user.level}) joined matchmaking queue.`);
+    this.logger.log(`👤 User ${user.username} (${user.level}) joined live matchmaking queue.`);
 
     return { status: 'QUEUED', message: 'Searching for speaking partner...', elapsedSeconds: 0 };
   }
 
   /**
-   * 2. Get Queue Status (Polling)
+   * 2. Get Queue Status (Heartbeat Polling)
    * --------------------------------------------------------
-   * Mobile app har 1-2 second mein radar ka status check karti hai:
-   * Returns: QUEUED, MATCHED, TIMEOUT, ya IDLE.
+   * Mobile app har 1.5 second mein radar ka status check karti hai.
+   * Har call user ki live presence (lastActiveAt) ko refresh karti hai.
    */
   async getStatus(userId: string) {
     // 1. Check karein agar match ho gaya hai
     const match = await this.getMatchForUser(userId);
     if (match) {
+      // Consume the match so it won't be returned repeatedly on subsequent entries
+      await this.clearMatchForUser(userId);
       return {
         status: 'MATCHED',
         match,
@@ -163,6 +232,9 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
+    // Refresh live presence timestamp (heartbeat)
+    await this.touchLearnerInQueue(userId);
+
     // Elapsed time calculate karein
     const elapsedSeconds = Math.floor((Date.now() - queuedUser.joinedAt) / 1000);
 
@@ -175,10 +247,11 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    // Agar waiting hai toh fir se check karein agar koi naya partner queue mein aaya ho
+    // 3. Search for available active partners while waiting
     const matchedPartner = await this.findBestMatch(queuedUser);
     if (matchedPartner) {
       const matchResult = await this.createMatchSession(queuedUser, matchedPartner);
+      await this.clearMatchForUser(userId);
       return {
         status: 'MATCHED',
         match: matchResult,
@@ -198,15 +271,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
    * User jab radar screen par "Cancel" dabata hai.
    */
   async cancelQueue(userId: string) {
-    await this.removeLearnerFromQueue(userId);
-    this.memoryMatches.delete(userId);
-    if (this.isRedisConnected && this.redisClient) {
-      try {
-        await this.redisClient.del(`fluentup:match:${userId}`);
-      } catch (e) {
-        // Ignored
-      }
-    }
+    await this.clearMatchForUser(userId);
     return { status: 'CANCELLED', message: 'Matchmaking cancelled successfully.' };
   }
 
@@ -214,38 +279,59 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
    * --------------------------------------------------------
    * Tiered Matching Engine Algorithm
    * --------------------------------------------------------
-   * 1. 0 - 10s: Exact same level (B1-B1, B2-B2, C1-C1)
-   * 2. 10 - 20s: Adjacent level (B1-B2, B2-C1)
-   * 3. 20 - 30s: Cross-level (any approved learner)
+   * 1. ONLY actively online learners (heartbeat within 5 seconds) are considered.
+   * 2. Users currently in active calls are strictly excluded.
+   * 3. 0 - 10s: Exact same level (B1-B1, B2-B2, C1-C1)
+   * 4. 10 - 20s: Adjacent level (B1-B2, B2-C1)
+   * 5. 20 - 30s: Cross-level (any available online learner)
    */
   private async findBestMatch(currentLearner: QueuedLearner): Promise<QueuedLearner | null> {
     const allQueued = await this.getAllQueuedLearners();
+    const now = Date.now();
 
-    // Self aur Blocked users ko exclude karein (Safety filter)
+    // Strict Online & Availability Filter
     const candidates: QueuedLearner[] = [];
     for (const l of allQueued) {
-      if (l.userId !== currentLearner.userId) {
-        const isBlocked = await this.safetyService.isBlockedPair(currentLearner.userId, l.userId);
-        if (!isBlocked) {
-          candidates.push(l);
-        }
+      if (l.userId === currentLearner.userId) continue;
+
+      // Filter 1: Check live heartbeat presence (must have polled within last 5s)
+      const lastSeenAgoMs = now - (l.lastActiveAt || l.joinedAt);
+      if (lastSeenAgoMs > 5000) {
+        this.logger.log(`🧹 Pruning offline learner ${l.username} (last seen ${Math.round(lastSeenAgoMs / 1000)}s ago)`);
+        await this.removeLearnerFromQueue(l.userId);
+        continue;
       }
+
+      // Filter 2: Safety block check
+      const isBlocked = await this.safetyService.isBlockedPair(currentLearner.userId, l.userId);
+      if (isBlocked) continue;
+
+      // Filter 3: Check if candidate is already in an active ongoing call
+      const isBusy = await this.isUserInActiveCall(l.userId);
+      if (isBusy) {
+        this.logger.log(`⏳ Candidate ${l.username} is currently busy in an ongoing call.`);
+        await this.removeLearnerFromQueue(l.userId);
+        continue;
+      }
+
+      candidates.push(l);
     }
+
     if (candidates.length === 0) return null;
 
-    const waitDurationSec = Math.floor((Date.now() - currentLearner.joinedAt) / 1000);
+    const waitDurationSec = Math.floor((now - currentLearner.joinedAt) / 1000);
 
     // Tier 1: Exact level match
     const exactMatch = candidates.find((c) => c.level === currentLearner.level);
     if (exactMatch) return exactMatch;
 
-    // Tier 2: Agar 10 second se zyada wait ho chuka ho -> Adjacent level
+    // Tier 2: Adjacent level match after 10 seconds
     if (waitDurationSec >= 10) {
       const adjacentMatch = candidates.find((c) => this.isAdjacentLevel(currentLearner.level, c.level));
       if (adjacentMatch) return adjacentMatch;
     }
 
-    // Tier 3: Agar 20 second se zyada wait ho chuka ho -> Koi bhi available partner
+    // Tier 3: Any approved active online partner after 20 seconds
     if (waitDurationSec >= 20 && candidates.length > 0) {
       return candidates[0];
     }
@@ -262,11 +348,11 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Match Session Banane Ka Core Logic:
+   * Match Session Creation:
    * 1. Dono users ko queue se remove karta hai.
-   * 2. Unique room ID aur topic select karta hai.
-   * 3. PostgreSQL database ke `calls` table mein session save karta hai.
-   * 4. Dono users ke liye match result ready karta hai.
+   * 2. Unique room ID aur topic assign karta hai.
+   * 3. PostgreSQL database ke calls table mein session save karta hai.
+   * 4. Dono users ke liye fresh match payload store karta hai.
    */
   private async createMatchSession(
     learnerA: QueuedLearner,
@@ -276,7 +362,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     await this.removeLearnerFromQueue(learnerA.userId);
     await this.removeLearnerFromQueue(learnerB.userId);
 
-    // Unique Room Name generate karna: e.g. call_flup_38dj92
+    // Unique Room Name generate karna
     const roomName = `call_flup_${Math.random().toString(36).substring(2, 10)}`;
 
     // Random curated topic select karna
@@ -290,10 +376,11 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         roomName,
         matchedLevel: learnerA.level,
         sharedTopic: randomTopic,
+        status: CallStatus.ACTIVE,
       },
     });
 
-    // Fresh user profiles fetch karein taaki updated photoUrl, address, hobbies dono partners ko live dikhein
+    // Fresh user profiles fetch karein
     const [dbUserA, dbUserB] = await Promise.all([
       this.prisma.user.findUnique({ where: { id: learnerA.userId } }),
       this.prisma.user.findUnique({ where: { id: learnerB.userId } }),
@@ -301,12 +388,14 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
 
     const actualA = dbUserA || learnerA;
     const actualB = dbUserB || learnerB;
+    const matchTime = Date.now();
 
-    // Learner A ke liye match payload (User B ka updated profile dikhayega)
+    // Match payload for Learner A
     const matchForA: MatchResult = {
       callId: callRecord.id,
       roomName,
       topic: randomTopic,
+      createdAt: matchTime,
       partner: {
         id: learnerB.userId,
         name: (actualB as any).username || learnerB.username,
@@ -318,11 +407,12 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       },
     };
 
-    // Learner B ke liye match payload (User A ka updated profile dikhayega)
+    // Match payload for Learner B
     const matchForB: MatchResult = {
       callId: callRecord.id,
       roomName,
       topic: randomTopic,
+      createdAt: matchTime,
       partner: {
         id: learnerA.userId,
         name: (actualA as any).username || learnerA.username,
@@ -334,18 +424,18 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       },
     };
 
-    // Match results store karna
+    // Store match results with TTL
     await this.setMatchResult(learnerA.userId, matchForA);
     await this.setMatchResult(learnerB.userId, matchForB);
 
     this.logger.log(
-      `🎉 Match created: ${learnerA.username} (${learnerA.level}) <-> ${learnerB.username} (${learnerB.level}) in Room: ${roomName}`,
+      `🎉 Live Match Created: ${learnerA.username} (${learnerA.level}) <-> ${learnerB.username} (${learnerB.level}) in Room: ${roomName}`,
     );
 
     return matchForA;
   }
 
-  // --- Queue Storage Helpers (Upstash Redis with In-Memory Fallback) ---
+  // --- Queue & Match Storage Helpers ---
 
   private async addLearnerToQueue(learner: QueuedLearner) {
     this.memoryQueue.set(learner.userId, learner);
@@ -355,11 +445,31 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
           `fluentup:queue:${learner.userId}`,
           JSON.stringify(learner),
           'EX',
-          35, // 35 seconds TTL
+          35,
         );
-      } catch (e) {
-        // Ignored, memory fallback already set
-      }
+      } catch (e) {}
+    }
+  }
+
+  private async touchLearnerInQueue(userId: string) {
+    const learner = this.memoryQueue.get(userId);
+    if (learner) {
+      learner.lastActiveAt = Date.now();
+    }
+    if (this.isRedisConnected && this.redisClient) {
+      try {
+        const data = await this.redisClient.get(`fluentup:queue:${userId}`);
+        if (data) {
+          const parsed = JSON.parse(data) as QueuedLearner;
+          parsed.lastActiveAt = Date.now();
+          await this.redisClient.set(
+            `fluentup:queue:${userId}`,
+            JSON.stringify(parsed),
+            'EX',
+            35,
+          );
+        }
+      } catch (e) {}
     }
   }
 
@@ -368,9 +478,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       try {
         const data = await this.redisClient.get(`fluentup:queue:${userId}`);
         if (data) return JSON.parse(data);
-      } catch (e) {
-        // Fallback to memory
-      }
+      } catch (e) {}
     }
     return this.memoryQueue.get(userId) || null;
   }
@@ -380,42 +488,54 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     if (this.isRedisConnected && this.redisClient) {
       try {
         await this.redisClient.del(`fluentup:queue:${userId}`);
-      } catch (e) {
-        // Ignored
-      }
+      } catch (e) {}
     }
   }
 
   private async getAllQueuedLearners(): Promise<QueuedLearner[]> {
+    let all: QueuedLearner[] = [];
     if (this.isRedisConnected && this.redisClient) {
       try {
         const keys = await this.redisClient.keys('fluentup:queue:*');
         if (keys.length > 0) {
           const values = await this.redisClient.mget(keys);
-          return values
+          all = values
             .filter((v): v is string => v !== null)
             .map((v) => JSON.parse(v) as QueuedLearner);
         }
       } catch (e) {
-        // Fallback to memory
+        all = Array.from(this.memoryQueue.values());
+      }
+    } else {
+      all = Array.from(this.memoryQueue.values());
+    }
+
+    const now = Date.now();
+    const activeLearners: QueuedLearner[] = [];
+
+    for (const learner of all) {
+      // If learner last polled > 5 seconds ago or total wait > 35s, they are offline/timed out
+      if (now - (learner.lastActiveAt || learner.joinedAt) > 5000 || now - learner.joinedAt > 35000) {
+        this.removeLearnerFromQueue(learner.userId).catch(() => {});
+      } else {
+        activeLearners.push(learner);
       }
     }
-    return Array.from(this.memoryQueue.values());
+
+    return activeLearners;
   }
 
   private async setMatchResult(userId: string, match: MatchResult) {
-    this.memoryMatches.set(userId, match);
+    this.memoryMatches.set(userId, { match, createdAt: Date.now() });
     if (this.isRedisConnected && this.redisClient) {
       try {
         await this.redisClient.set(
           `fluentup:match:${userId}`,
           JSON.stringify(match),
           'EX',
-          60, // 60 seconds TTL
+          25, // 25 seconds TTL
         );
-      } catch (e) {
-        // Ignored
-      }
+      } catch (e) {}
     }
   }
 
@@ -426,13 +546,17 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
         if (data) {
           return JSON.parse(data);
         }
-      } catch (e) {
-        // Fallback to memory
-      }
+      } catch (e) {}
     }
 
-    if (this.memoryMatches.has(userId)) {
-      return this.memoryMatches.get(userId)!;
+    const record = this.memoryMatches.get(userId);
+    if (record) {
+      // Expire matches older than 20 seconds
+      if (Date.now() - record.createdAt > 20000) {
+        this.memoryMatches.delete(userId);
+        return null;
+      }
+      return record.match;
     }
 
     return null;

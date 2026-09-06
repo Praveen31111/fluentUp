@@ -8,16 +8,21 @@
 // 4. 1-to-5 star feedback record karna.
 // ========================================================
 
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { CallStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { CallSummaryResponse, SubmitFeedbackDto } from './dto/call-feedback.dto';
 
 @Injectable()
 export class CallsService {
   private readonly logger = new Logger(CallsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => MatchmakingService))
+    private readonly matchmakingService: MatchmakingService,
+  ) {}
 
   /**
    * 1. End Call Session & Credit Spoken Minutes
@@ -43,6 +48,12 @@ export class CallsService {
       this.logger.warn(`Call not found for room: ${roomName}`);
       return null;
     }
+
+    // Always clear active matchmaking results for both participants so neither is stuck with stale match
+    try {
+      await this.matchmakingService.clearMatchForUser(call.userAId);
+      await this.matchmakingService.clearMatchForUser(call.userBId);
+    } catch (e) {}
 
     // Agar call pehle se hi complete ho chuki ho toh duplicate credit na karein
     if (call.status === CallStatus.COMPLETED) {

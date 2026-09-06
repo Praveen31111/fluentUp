@@ -714,6 +714,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMatchmakingTime(0);
     setMatchmakingRangeExpanded(false);
 
+    // Cancel any stale queue or match on server first to ensure 100% fresh queue entry
+    await MatchmakingApi.cancel(authToken).catch(() => {});
     // Call live server to enter queue
     await MatchmakingApi.join(authToken);
   };
@@ -726,7 +728,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActivePartner(null);
 
     // Call live server to remove from queue
-    await MatchmakingApi.cancel(authToken);
+    await MatchmakingApi.cancel(authToken).catch(() => {});
   };
 
   // Audio Call: Toggle Mute
@@ -809,6 +811,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Backend ko call end notify karna
       await CallsApi.endCall(authToken, activePartner.roomName, callDuration);
     }
+    setActivePartner(null);
   };
 
   // Post-Session Feedback: Save rating

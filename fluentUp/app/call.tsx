@@ -93,6 +93,7 @@ export default function CallScreen() {
   // End Call confirmation sheet visibility
   const [showEndSheet, setShowEndSheet] = useState<boolean>(false);
   const [isPartnerMuted, setIsPartnerMuted] = useState<boolean>(false);
+  const [isPeerConnected, setIsPeerConnected] = useState<boolean>(false);
   const [livePartner, setLivePartner] = useState<any>(activePartner);
 
   // Sync initial partner data
@@ -134,7 +135,22 @@ export default function CallScreen() {
 
         // Deterministic role: smaller ID acts as offerer (caller)
         const isCaller = user.id < (activePartner.id || '');
-        await webrtcService.initializeCall(activePartner.roomName, isCaller);
+        await webrtcService.initializeCall(
+          activePartner.roomName,
+          isCaller,
+          (_remoteStream) => {
+            console.log('🔊 Remote audio stream active in Call screen');
+            setIsPeerConnected(true);
+          },
+          (state) => {
+            console.log('🌐 WebRTC connection state:', state);
+            if (state === 'connected') {
+              setIsPeerConnected(true);
+            } else if (state === 'disconnected' || state === 'failed') {
+              setIsPeerConnected(false);
+            }
+          },
+        );
       }
     }
 
@@ -266,15 +282,17 @@ export default function CallScreen() {
             <WaveformVisualizer
               barCount={11}
               activeColor={FluentColors.primaryContainer}
-              isSpeaking={!isPartnerMuted && !isMuted}
+              isSpeaking={isPeerConnected && !isPartnerMuted && !isMuted}
             />
           </View>
           <Text style={styles.speakingStatus}>
-            {isMuted
+            {!isPeerConnected
+              ? `Connecting audio with ${displayPartner?.name || 'partner'}...`
+              : isMuted
               ? 'Your microphone is muted'
               : isPartnerMuted
               ? `${displayPartner?.name || 'Partner'} is currently muted`
-              : `${displayPartner?.name || 'Partner'} is speaking...`}
+              : `${displayPartner?.name || 'Partner'} is connected · Speaking live`}
           </Text>
 
           {/* Partner Icebreaker Card (Address, Education, Hobbies) */}

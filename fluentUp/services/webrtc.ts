@@ -250,11 +250,13 @@ class WebRTCService {
     roomName: string,
     isCaller: boolean,
     onRemoteStreamReady?: (stream: any) => void,
+    onConnectionStateChange?: (state: string) => void,
   ) {
     this.currentRoom = roomName;
 
     if (!this.isNativeSupported || !RTCPeerConnectionClass) {
       console.log('ℹ️ Running Call in simulated WebRTC mode.');
+      if (onConnectionStateChange) onConnectionStateChange('connected');
       return;
     }
 
@@ -336,7 +338,11 @@ class WebRTCService {
       };
 
       (pc as any).onconnectionstatechange = () => {
-        console.log('🌐 WebRTC connection state:', (pc as any).connectionState);
+        const state = (pc as any).connectionState;
+        console.log('🌐 WebRTC connection state:', state);
+        if (onConnectionStateChange) {
+          onConnectionStateChange(state);
+        }
       };
 
       // 6. Incoming ICE Candidate listener

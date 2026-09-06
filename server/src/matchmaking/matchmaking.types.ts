@@ -13,6 +13,7 @@ export interface QueuedLearner {
   username: string;        // Display name
   level: FluencyLevel;     // CEFR level (B1, B2, C1)
   joinedAt: number;        // Epoch timestamp (Date.now())
+  lastActiveAt: number;    // Heartbeat / poll timestamp (must be within 5s to be matched)
   photoUrl?: string | null;// Student photo / avatar
   address?: string | null; // Student city / location
   education?: string | null;// Student education / college
@@ -24,6 +25,7 @@ export interface MatchResult {
   callId: string;          // Neon DB calls table record ID
   roomName: string;        // Unique WebRTC audio room channel name
   topic: string;           // Conversation starter topic
+  createdAt?: number;      // Epoch timestamp of when match was formed
   partner: {
     id: string;            // Partner user ID
     name: string;          // Partner display name
