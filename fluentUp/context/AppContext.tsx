@@ -109,8 +109,11 @@ interface AppContextType {
   callDuration: number;             // Elapsed call time in seconds
   isMuted: boolean;
   isSpeakerOn: boolean;
+  audioRoute: 'speaker' | 'earpiece' | 'bluetooth';
   toggleMute: () => void;
   toggleSpeaker: () => void;
+  setAudioRoute: (route: 'speaker' | 'earpiece' | 'bluetooth') => void;
+  cycleAudioRoute: () => void;
   endCall: () => void;
 
   // Post-Session Feedback
@@ -668,9 +671,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Audio Call: Audio Route (Speaker, Bluetooth, Earpiece)
+  const [audioRoute, setAudioRouteState] = useState<'speaker' | 'earpiece' | 'bluetooth'>('bluetooth');
+
+  const setAudioRoute = (route: 'speaker' | 'earpiece' | 'bluetooth') => {
+    setAudioRouteState(route);
+    setIsSpeakerOn(route === 'speaker');
+  };
+
+  const cycleAudioRoute = () => {
+    // Cycles: Bluetooth -> Speaker -> Earpiece -> Bluetooth
+    setAudioRouteState((prev) => {
+      const next = prev === 'bluetooth' ? 'speaker' : prev === 'speaker' ? 'earpiece' : 'bluetooth';
+      setIsSpeakerOn(next === 'speaker');
+      return next;
+    });
+  };
+
   // Audio Call: Toggle Speaker
   const toggleSpeaker = () => {
-    setIsSpeakerOn((prev) => !prev);
+    cycleAudioRoute();
   };
 
   // Audio Call: End session
@@ -734,8 +754,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         callDuration,
         isMuted,
         isSpeakerOn,
+        audioRoute,
         toggleMute,
         toggleSpeaker,
+        setAudioRoute,
+        cycleAudioRoute,
         endCall,
 
         saveFeedback,

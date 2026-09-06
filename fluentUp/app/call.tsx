@@ -74,7 +74,7 @@ export default function CallScreen() {
     activePartner,
     callDuration,
     isMuted,
-    isSpeakerOn,
+    audioRoute,
     toggleMute,
     toggleSpeaker,
     endCall,
@@ -128,10 +128,10 @@ export default function CallScreen() {
     webrtcService.setMuted(isMuted);
   }, [isMuted]);
 
-  // 3. Sync speaker state (Loudspeaker vs Earpiece)
+  // 3. Sync audio route state (Bluetooth Headset / Loudspeaker / Earpiece)
   React.useEffect(() => {
-    webrtcService.setSpeaker(isSpeakerOn);
-  }, [isSpeakerOn]);
+    webrtcService.setAudioRoute(audioRoute);
+  }, [audioRoute]);
 
   // 4. Periodic heartbeat to prevent Render reverse-proxy idle socket timeout
   React.useEffect(() => {
@@ -300,7 +300,7 @@ export default function CallScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* 2. Speaker Toggle */}
+            {/* 2. Audio Route Switcher (Bluetooth / Speaker / Earpiece) */}
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.dockButton}
@@ -309,16 +309,28 @@ export default function CallScreen() {
               <View
                 style={[
                   styles.btnCircle,
-                  isSpeakerOn ? styles.btnCircleSpeakerActive : styles.btnCircleDefault,
+                  audioRoute !== 'earpiece' ? styles.btnCircleSpeakerActive : styles.btnCircleDefault,
                 ]}
               >
                 <MaterialIcons
-                  name={isSpeakerOn ? 'volume-up' : 'hearing'}
+                  name={
+                    audioRoute === 'bluetooth'
+                      ? 'headset'
+                      : audioRoute === 'speaker'
+                      ? 'volume-up'
+                      : 'phone-in-talk'
+                  }
                   size={24}
-                  color={isSpeakerOn ? FluentColors.primaryContainer : FluentColors.secondaryText}
+                  color={audioRoute !== 'earpiece' ? FluentColors.primaryContainer : FluentColors.secondaryText}
                 />
               </View>
-              <Text style={styles.btnLabel}>Speaker</Text>
+              <Text style={styles.btnLabel}>
+                {audioRoute === 'bluetooth'
+                  ? 'Bluetooth'
+                  : audioRoute === 'speaker'
+                  ? 'Speaker'
+                  : 'Earpiece'}
+              </Text>
             </TouchableOpacity>
 
             {/* 3. End Call Button */}

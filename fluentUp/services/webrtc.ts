@@ -179,6 +179,28 @@ class WebRTCService {
             return null;
           }
         }
+
+        // Android 12+ (API 31+) Bluetooth connect runtime permission for Neckbands / TWS
+        if (Platform.Version >= 31 && (PermissionsAndroid.PERMISSIONS as any).BLUETOOTH_CONNECT) {
+          try {
+            const hasBtPermission = await PermissionsAndroid.check(
+              (PermissionsAndroid.PERMISSIONS as any).BLUETOOTH_CONNECT,
+            );
+            if (!hasBtPermission) {
+              await PermissionsAndroid.request(
+                (PermissionsAndroid.PERMISSIONS as any).BLUETOOTH_CONNECT,
+                {
+                  title: 'Bluetooth Headset Access',
+                  message: 'FluentUp allows using your wireless neckband or Bluetooth earphones during calls.',
+                  buttonPositive: 'Allow',
+                  buttonNegative: 'Deny',
+                },
+              );
+            }
+          } catch (btErr: any) {
+            console.log('Bluetooth permission notice:', btErr.message);
+          }
+        }
       }
 
       // 2. Hardware audio mode initialization for background persistence
@@ -411,21 +433,46 @@ class WebRTCService {
   }
 
   /**
-   * 5. Toggle Loudspeaker vs Earpiece (Speakerphone)
+   * 5. Set Audio Route: Loudspeaker, Earpiece, or Bluetooth / Headset
    */
-  async setSpeaker(enableSpeaker: boolean) {
+  async setAudioRoute(route: 'speaker' | 'earpiece' | 'bluetooth') {
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        playThroughEarpieceAndroid: !enableSpeaker, // false = LOUDSPEAKER, true = EARPIECE
-        shouldDuckAndroid: false,
-        staysActiveInBackground: true,
-      });
-      console.log(`🔊 Hardware audio output routed to: ${enableSpeaker ? 'LOUDSPEAKER' : 'EARPIECE'}`);
+      if (route === 'speaker') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false, // Force Speakerphone
+          shouldDuckAndroid: false,
+          staysActiveInBackground: true,
+        });
+        console.log('🔊 Hardware audio routed to: LOUDSPEAKER');
+      } else if (route === 'earpiece') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: true, // Phone top ear speaker
+          shouldDuckAndroid: false,
+          staysActiveInBackground: true,
+        });
+        console.log('📱 Hardware audio routed to: EARPIECE');
+      } else {
+        // Bluetooth / Headset default: allow Android OS to prioritize Bluetooth SCO / A2DP
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+          shouldDuckAndroid: false,
+          staysActiveInBackground: true,
+        });
+        console.log('🎧 Hardware audio routed to: BLUETOOTH / HEADSET');
+      }
     } catch (e: any) {
-      console.warn('Could not set speaker mode:', e.message);
+      console.warn('Could not set audio route mode:', e.message);
     }
+  }
+
+  async setSpeaker(enableSpeaker: boolean) {
+    return this.setAudioRoute(enableSpeaker ? 'speaker' : 'earpiece');
   }
 
   /**
