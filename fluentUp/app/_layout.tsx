@@ -32,6 +32,9 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: '#FAFAF8' },
         }}
       >
+        {/* 0. Gatekeeper Entry Route */}
+        <Stack.Screen name="index" />
+
         {/* 1. First Welcome Screen */}
         <Stack.Screen name="welcome" />
 
