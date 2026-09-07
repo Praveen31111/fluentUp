@@ -19,25 +19,36 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
-import {
-  GoogleSignin,
-  statusCodes,
-  isSuccessResponse,
-} from '@react-native-google-signin/google-signin';
 import { FluentColors } from '@/constants/theme';
 import { BrandLogo } from '@/components/BrandLogo';
 import { useApp } from '@/context/AppContext';
 
-// Configure Google Sign-In with Web Client ID from Firebase / Google Cloud
-GoogleSignin.configure({
-  webClientId: '331335207670-3783qpl077c129t63jmtu73g3flg49hg.apps.googleusercontent.com',
-  scopes: ['profile', 'email'],
-  offlineAccess: false,
-});
+// Safely load native GoogleSignin driver (available in Standalone APK / Dev Build, absent in Expo Go)
+let GoogleSignin: any = null;
+let statusCodes: any = {};
+let isSuccessResponse: any = () => false;
+
+try {
+  const gSignin = require('@react-native-google-signin/google-signin');
+  GoogleSignin = gSignin.GoogleSignin;
+  statusCodes = gSignin.statusCodes || {};
+  isSuccessResponse = gSignin.isSuccessResponse || (() => false);
+
+  if (GoogleSignin && typeof GoogleSignin.configure === 'function') {
+    GoogleSignin.configure({
+      webClientId: '331335207670-3783qpl077c129t63jmtu73g3flg49hg.apps.googleusercontent.com',
+      scopes: ['profile', 'email'],
+      offlineAccess: false,
+    });
+  }
+} catch (e: any) {
+  console.warn('⚠️ GoogleSignin native driver simulated for Expo Go. Use Email & Password for testing.');
+}
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -56,6 +67,14 @@ export default function AuthScreen() {
 
   // Native One-Tap Google Sign-In Handler
   const handleGoogleSignIn = async () => {
+    if (!GoogleSignin) {
+      Alert.alert(
+        'Testing Notice',
+        'Google One-Tap Sign-In requires an installed APK build. While testing in Expo Go, please use Email and Password.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     try {
       setIsGoogleLoading(true);
       setErrorMessage('');
