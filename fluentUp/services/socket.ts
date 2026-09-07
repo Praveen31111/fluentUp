@@ -181,6 +181,93 @@ class CallSocketService {
     }
   }
 
+  // ==========================================
+  // Direct Friend Calling Methods
+  // ==========================================
+  registerUser(userId: string) {
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('register-user', { userId });
+    }
+  }
+
+  sendDirectCallInvite(
+    targetUserId: string,
+    roomName: string,
+    mode: 'audio' | 'video',
+    caller: { id: string; name: string; photoUrl?: string; level?: string },
+  ) {
+    if (this.socket) {
+      this.socket.emit('direct-call-invite', {
+        targetUserId,
+        roomName,
+        mode,
+        caller,
+      });
+    }
+  }
+
+  onIncomingDirectCall(callback: (data: {
+    caller: { id: string; name: string; photoUrl?: string; level?: string };
+    roomName: string;
+    mode: 'audio' | 'video';
+    callerSocketId: string;
+  }) => void) {
+    if (this.socket) {
+      this.socket.off('incoming-direct-call');
+      this.socket.on('incoming-direct-call', callback);
+    }
+  }
+
+  respondDirectCall(
+    callerSocketId: string,
+    accepted: boolean,
+    roomName: string,
+    responder: { id: string; name: string; photoUrl?: string; level?: string },
+  ) {
+    if (this.socket) {
+      this.socket.emit('direct-call-response', {
+        callerSocketId,
+        accepted,
+        roomName,
+        responder,
+      });
+    }
+  }
+
+  onDirectCallAccepted(callback: (data: { roomName: string; responder: any }) => void) {
+    if (this.socket) {
+      this.socket.off('direct-call-accepted');
+      this.socket.on('direct-call-accepted', callback);
+    }
+  }
+
+  onDirectCallDeclined(callback: (data: { reason: string }) => void) {
+    if (this.socket) {
+      this.socket.off('direct-call-declined');
+      this.socket.on('direct-call-declined', callback);
+    }
+  }
+
+  onDirectCallFailed(callback: (data: { reason: string }) => void) {
+    if (this.socket) {
+      this.socket.off('direct-call-failed');
+      this.socket.on('direct-call-failed', callback);
+    }
+  }
+
+  cancelDirectCall(targetUserId: string) {
+    if (this.socket) {
+      this.socket.emit('direct-call-cancel', { targetUserId });
+    }
+  }
+
+  onDirectCallCancelled(callback: () => void) {
+    if (this.socket) {
+      this.socket.off('direct-call-cancelled');
+      this.socket.on('direct-call-cancelled', callback);
+    }
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();

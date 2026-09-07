@@ -116,9 +116,13 @@ export default function HomeScreen() {
 
           {/* Value Promise */}
           <View style={styles.heroTextArea}>
+            <View style={styles.unlimitedBadge}>
+              <MaterialIcons name="all-inclusive" size={13} color="#15803D" />
+              <Text style={styles.unlimitedBadgeText}>100% FREE · UNLIMITED CALLING</Text>
+            </View>
             <Text style={styles.heroCardTitle}>Natural 1-on-1 Voice Dialogue</Text>
             <Text style={styles.heroCardSubtitle}>
-              Low-stress voice practice at your fluency pace. No camera, no judgment, just natural flow.
+              Unlimited voice practice with real learners. Speak freely for as many hours as you like with zero limits.
             </Text>
           </View>
 
@@ -142,48 +146,56 @@ export default function HomeScreen() {
                 </>
               )}
             </TouchableOpacity>
-            <Text style={styles.heroCardFootnote}>Pure audio · Speak comfortably from anywhere.</Text>
+            <Text style={styles.heroCardFootnote}>⚡ Unlimited Calling · Talk freely without any time limits.</Text>
           </View>
         </View>
 
         {/* Card 2: Dedicated Face-to-Face Video Call Partner Card */}
-        <View style={styles.videoHeroCard}>
-          <View style={styles.videoCardTopRow}>
-            <View style={styles.videoIconWrapper}>
-              <MaterialIcons name="videocam" size={24} color="#FFFFFF" />
-            </View>
-            <View style={styles.videoBadgePill}>
-              <View style={styles.liveGreenDot} />
-              <Text style={styles.videoBadgePillText}>FACE-TO-FACE · HD VIDEO</Text>
-            </View>
+        <View style={styles.heroCard}>
+          {/* Center Living Pulse Orb with Video Icon */}
+          <View style={styles.orbContainer}>
+            <PulseOrb
+              size={68}
+              iconName="videocam"
+              isPulsing={true}
+              onPress={() => handleFindPartner('video')}
+            />
           </View>
 
-          <View style={styles.videoTextArea}>
-            <Text style={styles.videoCardTitle}>Practice with Live Video</Text>
-            <Text style={styles.videoCardSubtitle}>
-              Master eye contact, natural facial expressions & body language confidence with peer learners.
+          {/* Value Promise */}
+          <View style={styles.heroTextArea}>
+            <View style={styles.unlimitedBadge}>
+              <MaterialIcons name="all-inclusive" size={13} color="#15803D" />
+              <Text style={styles.unlimitedBadgeText}>100% FREE · UNLIMITED VIDEO</Text>
+            </View>
+            <Text style={styles.heroCardTitle}>Face-to-Face 1-on-1 Video Dialogue</Text>
+            <Text style={styles.heroCardSubtitle}>
+              Unlimited HD video practice. Master eye contact, natural facial expressions & body language confidence.
             </Text>
           </View>
 
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={[styles.findVideoPartnerBtn, connectingMode === 'video' && { opacity: 0.85 }]}
-            onPress={() => handleFindPartner('video')}
-          >
-            {connectingMode === 'video' ? (
-              <>
-                <MaterialIcons name="sync" size={20} color="#FFFFFF" />
-                <Text style={styles.findVideoPartnerText}>Connecting video queue...</Text>
-              </>
-            ) : (
-              <>
-                <MaterialIcons name="videocam" size={20} color="#FFFFFF" />
-                <Text style={styles.findVideoPartnerText}>Find a Video Partner</Text>
-                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.videoCardFootnote}>100% Free Direct P2P · Zero Bandwidth Cost</Text>
+          {/* Action Button: "Find Video Partner" */}
+          <View style={styles.heroButtonWrapper}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              style={[styles.findPartnerBtn, connectingMode === 'video' && { opacity: 0.85 }]}
+              onPress={() => handleFindPartner('video')}
+            >
+              {connectingMode === 'video' ? (
+                <>
+                  <MaterialIcons name="sync" size={20} color={FluentColors.onPrimary} />
+                  <Text style={styles.findPartnerText}>Connecting video queue...</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="videocam" size={20} color={FluentColors.onPrimary} />
+                  <Text style={styles.findPartnerText}>Find a Video Partner</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color={FluentColors.onPrimary} />
+                </>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.heroCardFootnote}>⚡ Unlimited Video · Connect & speak without any time limits.</Text>
+          </View>
         </View>
 
         {/* Quick Cues & Daily Target Bento */}
@@ -395,6 +407,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     textAlign: 'center',
     marginVertical: 12,
+  },
+  unlimitedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 999,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  unlimitedBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803D',
+    letterSpacing: 0.6,
   },
   heroCardTitle: {
     fontSize: 18,

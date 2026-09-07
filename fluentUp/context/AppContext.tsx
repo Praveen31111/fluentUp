@@ -7,6 +7,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AssessmentApi, AuthApi, CallsApi, MatchmakingApi } from '../services/api';
 import { callSocketService } from '../services/socket';
@@ -123,6 +124,12 @@ interface AppContextType {
 
   // Post-Session Feedback
   saveFeedback: (rating: number, quality: string) => void;
+
+  // Direct Calling & Friends Call State
+  incomingCall: any | null;
+  startDirectCall: (friend: any, mode?: 'audio' | 'video') => void;
+  acceptIncomingCall: () => void;
+  declineIncomingCall: () => void;
 }
 
 // Default Fallback Questions
@@ -835,6 +842,121 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Direct Friend Calling & Presence
+  const [incomingCall, setIncomingCall] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (user?.id) {
+      callSocketService.connect();
+      callSocketService.registerUser(user.id);
+
+      callSocketService.onIncomingDirectCall((data) => {
+        console.log('🔔 [AppContext] Incoming direct call from:', data?.caller?.name);
+        setIncomingCall(data);
+      });
+
+      callSocketService.onDirectCallCancelled(() => {
+        console.log('🛑 [AppContext] Incoming call cancelled by caller');
+        setIncomingCall(null);
+      });
+    }
+  }, [user?.id]);
+
+  const startDirectCall = (friend: any, mode: 'audio' | 'video' = 'audio') => {
+    if (!user) return;
+    const roomName = `direct_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    callSocketService.connect();
+    callSocketService.registerUser(user.id);
+    setCallMode(mode);
+
+    Alert.alert(
+      'Calling...',
+      `Calling ${friend.username || 'Friend'} (${mode === 'video' ? 'Video' : 'Voice'})... Waiting for answer.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            callSocketService.cancelDirectCall(friend.id);
+          },
+        },
+      ],
+    );
+
+    callSocketService.sendDirectCallInvite(friend.id, roomName, mode, {
+      id: user.id,
+      name: user.username,
+      photoUrl: user.photoUrl,
+      level: user.level,
+    });
+
+    callSocketService.onDirectCallAccepted((data) => {
+      setActivePartner({
+        id: friend.id,
+        name: friend.username,
+        level: friend.level || 'B1',
+        location: friend.address || 'Online',
+        avatar:
+          friend.photoUrl ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+        sharedTopic: friend.topTopic || 'Free Conversation',
+        roomName: data.roomName || roomName,
+        durationInCall: 0,
+        mode,
+      });
+    });
+
+    callSocketService.onDirectCallDeclined((data) => {
+      Alert.alert('Call Declined', data.reason || 'Friend is unavailable right now.');
+    });
+
+    callSocketService.onDirectCallFailed((data) => {
+      Alert.alert('Offline', data.reason || 'Friend is currently offline.');
+    });
+  };
+
+  const acceptIncomingCall = () => {
+    if (!incomingCall || !user) return;
+    callSocketService.respondDirectCall(
+      incomingCall.callerSocketId,
+      true,
+      incomingCall.roomName,
+      {
+        id: user.id,
+        name: user.username,
+        photoUrl: user.photoUrl,
+        level: user.level,
+      },
+    );
+    const mode = incomingCall.mode || 'audio';
+    setCallMode(mode);
+    setActivePartner({
+      id: incomingCall.caller.id,
+      name: incomingCall.caller.name,
+      level: incomingCall.caller.level || 'B1',
+      location: 'Speaking Partner',
+      avatar:
+        incomingCall.caller.photoUrl ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+      sharedTopic: 'Direct Practice',
+      roomName: incomingCall.roomName,
+      durationInCall: 0,
+      mode,
+    });
+    setIncomingCall(null);
+  };
+
+  const declineIncomingCall = () => {
+    if (!incomingCall || !user) return;
+    callSocketService.respondDirectCall(
+      incomingCall.callerSocketId,
+      false,
+      incomingCall.roomName,
+      { id: user.id, name: user.username },
+    );
+    setIncomingCall(null);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -880,6 +1002,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         endCall,
 
         saveFeedback,
+
+        incomingCall,
+        startDirectCall,
+        acceptIncomingCall,
+        declineIncomingCall,
       }}
     >
       {children}

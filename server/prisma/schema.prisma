@@ -49,6 +49,8 @@ model User {
   reportsReceived Report[]           @relation("ReportTarget")
   blockedUsers    BlockedUser[]      @relation("BlockInitiator")
   blockedBy       BlockedUser[]      @relation("BlockedTarget")
+  friendshipsSent Friendship[]       @relation("FriendshipSender")
+  friendshipsReceived Friendship[]   @relation("FriendshipReceiver")
 
   @@map("users")
 }
@@ -172,4 +174,27 @@ model BlockedUser {
 
   @@unique([userId, blockedUserId])
   @@map("blocked_users")
+}
+
+// --------------------------------------------------------
+// 6. Friendship & Direct Contact Table
+// --------------------------------------------------------
+model Friendship {
+  id         String           @id @default(uuid())
+  senderId   String
+  receiverId String
+  sender     User             @relation("FriendshipSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User             @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  status     FriendshipStatus @default(PENDING) // PENDING, ACCEPTED, REJECTED
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([senderId, receiverId])
+  @@map("friendships")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }

@@ -16,15 +16,23 @@
  */
 
 import React from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import { AppProvider } from '@/context/AppContext';
+import { AppProvider, useApp } from '@/context/AppContext';
+import { IncomingCallModal } from '@/components/IncomingCallModal';
 
-export default function RootLayout() {
+function NavigationWithIncomingCall() {
+  const router = useRouter();
+  const { incomingCall, acceptIncomingCall, declineIncomingCall } = useApp();
+
+  const handleAccept = () => {
+    acceptIncomingCall();
+    router.push('/call');
+  };
+
   return (
-    <AppProvider>
-      <StatusBar style="dark" />
+    <>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -50,7 +58,7 @@ export default function RootLayout() {
         <Stack.Screen name="assessment/result-pass" />
         <Stack.Screen name="assessment/result-fail" />
 
-        {/* 5. Main App Tabs (Home & Profile) */}
+        {/* 5. Main App Tabs (Home, Friends & Profile) */}
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
         {/* 6. Matchmaking & Real-time Partner Matching */}
@@ -63,6 +71,22 @@ export default function RootLayout() {
         {/* 8. Session Feedback & Reflection */}
         <Stack.Screen name="feedback" />
       </Stack>
+
+      <IncomingCallModal
+        visible={!!incomingCall}
+        callData={incomingCall}
+        onAccept={handleAccept}
+        onDecline={declineIncomingCall}
+      />
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AppProvider>
+      <StatusBar style="dark" />
+      <NavigationWithIncomingCall />
     </AppProvider>
   );
 }

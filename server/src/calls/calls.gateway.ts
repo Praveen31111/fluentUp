@@ -46,6 +46,10 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Background app-switch & network handover grace period: key = `${roomName}:${userId}`
   private disconnectGraceTimeouts = new Map<string, NodeJS.Timeout>();
 
+  // Online user presence: userId -> socketId
+  private userSockets = new Map<string, string>();
+  private socketUser = new Map<string, string>();
+
   constructor(private readonly callsService: CallsService) {}
 
   /**
@@ -74,6 +78,12 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   async handleDisconnect(client: Socket) {
     this.logger.log(`🔴 Socket disconnected: ${client.id}`);
+
+    const onlineUserId = this.socketUser.get(client.id);
+    if (onlineUserId) {
+      this.userSockets.delete(onlineUserId);
+      this.socketUser.delete(client.id);
+    }
 
     const meta = this.socketMeta.get(client.id);
     if (meta) {
@@ -350,5 +360,87 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     return { status: 'ENDED', summary };
+  }
+
+  /**
+   * 8. Direct 1-on-1 Friend Calling System
+   * --------------------------------------------------------
+   */
+  @SubscribeMessage('register-user')
+  handleRegisterUser(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { userId: string },
+  ) {
+    if (payload?.userId) {
+      this.userSockets.set(payload.userId, client.id);
+      this.socketUser.set(client.id, payload.userId);
+      this.logger.log(`👤 User registered online: ${payload.userId} (socket: ${client.id})`);
+      return { status: 'REGISTERED' };
+    }
+  }
+
+  @SubscribeMessage('direct-call-invite')
+  handleDirectCallInvite(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      targetUserId: string;
+      roomName: string;
+      mode: 'audio' | 'video';
+      caller: { id: string; name: string; photoUrl?: string; level?: string };
+    },
+  ) {
+    this.logger.log(
+      `📞 Direct call invite from ${payload.caller?.name} (${payload.caller?.id}) to ${payload.targetUserId} [${payload.mode}]`,
+    );
+    const targetSocketId = this.userSockets.get(payload.targetUserId);
+    if (!targetSocketId) {
+      client.emit('direct-call-failed', { reason: 'Friend is currently offline.' });
+      return;
+    }
+
+    this.server.to(targetSocketId).emit('incoming-direct-call', {
+      caller: payload.caller,
+      roomName: payload.roomName,
+      mode: payload.mode,
+      callerSocketId: client.id,
+    });
+  }
+
+  @SubscribeMessage('direct-call-response')
+  handleDirectCallResponse(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      callerSocketId: string;
+      accepted: boolean;
+      roomName: string;
+      responder: { id: string; name: string; photoUrl?: string; level?: string };
+    },
+  ) {
+    this.logger.log(
+      `📞 Direct call response from ${payload.responder?.name}: ${payload.accepted ? 'ACCEPTED' : 'DECLINED'}`,
+    );
+    if (payload.accepted) {
+      this.server.to(payload.callerSocketId).emit('direct-call-accepted', {
+        roomName: payload.roomName,
+        responder: payload.responder,
+      });
+    } else {
+      this.server.to(payload.callerSocketId).emit('direct-call-declined', {
+        reason: 'Friend declined the call or is busy.',
+      });
+    }
+  }
+
+  @SubscribeMessage('direct-call-cancel')
+  handleDirectCallCancel(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { targetUserId: string },
+  ) {
+    const targetSocketId = this.userSockets.get(payload.targetUserId);
+    if (targetSocketId) {
+      this.server.to(targetSocketId).emit('direct-call-cancelled');
+    }
   }
 }

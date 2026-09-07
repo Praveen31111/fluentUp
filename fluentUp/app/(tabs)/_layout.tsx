@@ -45,7 +45,18 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 2. Profile Screen Tab */}
+      {/* 2. Friends Hub Tab */}
+      <Tabs.Screen
+        name="friends"
+        options={{
+          title: 'Friends',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="people" size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* 3. Profile Screen Tab */}
       <Tabs.Screen
         name="profile"
         options={{

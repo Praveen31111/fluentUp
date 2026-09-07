@@ -18,16 +18,22 @@ import {
   StatusBar,
   ScrollView,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { FluentColors } from '@/constants/theme';
 import { useApp } from '@/context/AppContext';
+import { FriendsApi } from '@/services/friends.api';
 
 export default function FeedbackScreen() {
   const router = useRouter();
-  const { activePartner, saveFeedback, callDuration } = useApp();
+  const { activePartner, saveFeedback, callDuration, authToken } = useApp();
+
+  const [friendRequestSent, setFriendRequestSent] = useState<boolean>(false);
+  const [isSendingFriendReq, setIsSendingFriendReq] = useState<boolean>(false);
 
   // Format seconds to MM:SS string
   const formatDuration = (seconds: number) => {
@@ -55,6 +61,23 @@ export default function FeedbackScreen() {
   const handleDone = () => {
     saveFeedback(rating, practiceQuality);
     router.replace('/(tabs)');
+  };
+
+  // Send friend request to active partner
+  const handleAddFriend = async () => {
+    if (!activePartner?.id || !authToken) return;
+    setIsSendingFriendReq(true);
+    const res = await FriendsApi.sendRequest(authToken, activePartner.id);
+    setIsSendingFriendReq(false);
+    if (res.success) {
+      setFriendRequestSent(true);
+      Alert.alert(
+        'Friend Request Sent!',
+        `When ${activePartner.name} accepts, you will be able to direct call them anytime from your Friends tab.`,
+      );
+    } else {
+      Alert.alert('Notice', res.message);
+    }
   };
 
   return (
@@ -196,6 +219,41 @@ export default function FeedbackScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Add Friend Action Card */}
+        {activePartner && (
+          <View style={styles.addFriendCard}>
+            <View style={styles.addFriendTextCol}>
+              <Text style={styles.addFriendTitle}>Enjoyed this conversation?</Text>
+              <Text style={styles.addFriendSub}>
+                Add {activePartner.name?.split(' ')[0] || 'partner'} to your friends to practice together again anytime.
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={friendRequestSent || isSendingFriendReq}
+              style={[
+                styles.addFriendBtn,
+                friendRequestSent && styles.addFriendBtnSent,
+              ]}
+              onPress={handleAddFriend}
+            >
+              {isSendingFriendReq ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : friendRequestSent ? (
+                <>
+                  <MaterialIcons name="check" size={16} color="#FFFFFF" />
+                  <Text style={styles.addFriendBtnText}>Sent</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialIcons name="person-add" size={16} color="#FFFFFF" />
+                  <Text style={styles.addFriendBtnText}>Add Friend</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Safety / Report Partner Link */}
         <TouchableOpacity
@@ -426,6 +484,55 @@ const styles = StyleSheet.create({
   reportText: {
     fontSize: 13,
     color: FluentColors.secondaryText,
+  },
+  addFriendCard: {
+    backgroundColor: '#F5F3FF',
+    borderRadius: 20,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+    marginBottom: 16,
+  },
+  addFriendTextCol: {
+    flex: 1,
+    marginRight: 12,
+  },
+  addFriendTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: FluentColors.text,
+    marginBottom: 2,
+  },
+  addFriendSub: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: FluentColors.secondaryText,
+  },
+  addFriendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: FluentColors.primaryContainer,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    shadowColor: FluentColors.primaryContainer,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addFriendBtnSent: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+  },
+  addFriendBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   bottomSection: {
     gap: 12,

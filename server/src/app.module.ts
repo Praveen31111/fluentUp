@@ -13,6 +13,7 @@ import { AssessmentModule } from './assessment/assessment.module';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { CallsModule } from './calls/calls.module';
 import { SafetyModule } from './safety/safety.module';
+import { FriendsModule } from './friends/friends.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -36,6 +37,8 @@ import { AppService } from './app.service';
     CallsModule,
     // SafetyModule: User reporting, blocking, and abuse prevention
     SafetyModule,
+    // FriendsModule: Friend requests, friendship status, and friend list
+    FriendsModule,
   ],
   // controllers array: Incoming HTTP requests handle karne wale controllers
   controllers: [AppController],
