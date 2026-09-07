@@ -7,7 +7,7 @@
 // 3. POST /api/matchmaking/cancel - Cancel active search
 // ========================================================
 
-import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { FirebaseAuthGuard } from '../auth/guards/firebase-auth.guard';
@@ -20,11 +20,15 @@ export class MatchmakingController {
 
   /**
    * POST /api/matchmaking/join
-   * User matching radar queue mein enter hota hai.
+   * User matching radar queue mein enter hota hai (supports 'audio' | 'video' mode).
    */
   @Post('join')
-  join(@CurrentUser() user: User) {
-    return this.matchmakingService.joinQueue(user);
+  join(
+    @CurrentUser() user: User,
+    @Body() body?: { mode?: 'audio' | 'video' },
+  ) {
+    const mode = body?.mode === 'video' ? 'video' : 'audio';
+    return this.matchmakingService.joinQueue(user, mode);
   }
 
   /**

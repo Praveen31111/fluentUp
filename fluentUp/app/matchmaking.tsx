@@ -37,6 +37,7 @@ export default function MatchmakingScreen() {
     cancelMatchmaking,
     startMatchmaking,
     activePartner,
+    callMode,
   } = useApp();
 
   // Cancel finding partner and return to Home
@@ -64,16 +65,26 @@ export default function MatchmakingScreen() {
           <View style={styles.badgePill}>
             <View style={[styles.pingDot, isTimedOut && { backgroundColor: FluentColors.warning }]} />
             <Text style={styles.badgeText}>
-              {isTimedOut ? 'QUEUE TIMED OUT' : 'REAL-TIME MATCHMAKING'}
+              {isTimedOut
+                ? 'QUEUE TIMED OUT'
+                : callMode === 'video'
+                ? 'MATCHING VIDEO PARTNER'
+                : 'REAL-TIME MATCHMAKING'}
             </Text>
           </View>
 
           <Text style={styles.title}>
-            {isTimedOut ? 'No partner found right now' : 'Finding your partner'}
+            {isTimedOut
+              ? 'No partner found right now'
+              : callMode === 'video'
+              ? 'Finding your video partner'
+              : 'Finding your partner'}
           </Text>
           <Text style={styles.subtitle}>
             {isTimedOut
               ? 'Try again in a few moments or expand your practice filter.'
+              : callMode === 'video'
+              ? 'Looking for an online learner ready for face-to-face video conversation.'
               : 'Looking for an online partner at your English fluency level.'}
           </Text>
         </View>
@@ -152,7 +163,7 @@ export default function MatchmakingScreen() {
               <TouchableOpacity
                 activeOpacity={0.88}
                 style={[styles.cancelBtn, { flex: 1, backgroundColor: FluentColors.primaryContainer }]}
-                onPress={() => startMatchmaking()}
+                onPress={() => startMatchmaking(callMode)}
               >
                 <Text style={[styles.cancelBtnText, { color: FluentColors.onPrimary }]}>
                   Retry Search

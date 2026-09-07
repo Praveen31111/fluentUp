@@ -18,6 +18,7 @@ export interface QueuedLearner {
   address?: string | null; // Student city / location
   education?: string | null;// Student education / college
   hobbies?: string[];      // Student hobbies tags
+  mode?: 'audio' | 'video';// Preferred call mode: 'audio' or 'video'
 }
 
 // Successful match hone par return hone wala data
@@ -26,6 +27,7 @@ export interface MatchResult {
   roomName: string;        // Unique WebRTC audio room channel name
   topic: string;           // Conversation starter topic
   createdAt?: number;      // Epoch timestamp of when match was formed
+  mode?: 'audio' | 'video';// Preferred session mode
   partner: {
     id: string;            // Partner user ID
     name: string;          // Partner display name

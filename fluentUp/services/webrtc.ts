@@ -21,6 +21,7 @@ let RTCPeerConnectionClass: any = null;
 let RTCIceCandidateClass: any = null;
 let RTCSessionDescriptionClass: any = null;
 let mediaDevicesInstance: any = null;
+let RTCViewComponent: any = null;
 let isNativeWebRTCAvailable = false;
 
 try {
@@ -31,12 +32,15 @@ try {
     RTCIceCandidateClass = webrtc.RTCIceCandidate;
     RTCSessionDescriptionClass = webrtc.RTCSessionDescription;
     mediaDevicesInstance = webrtc.mediaDevices;
+    RTCViewComponent = webrtc.RTCView;
     isNativeWebRTCAvailable = true;
   }
 } catch {
   // Running in Expo Go without custom native C++ WebRTC binaries
   isNativeWebRTCAvailable = false;
 }
+
+export const RTCView = RTCViewComponent;
 
 // High-Reliability STUN + Global TURN servers for NAT Traversal
 // Google + Cloudflare STUN are 100% free, permanent, and have zero time limits.
@@ -114,9 +118,12 @@ function optimizeOpusSdp(sdp: string): string {
 class WebRTCService {
   private peerConnection: any = null;
   private localStream: any = null;
+  private localVideoStream: any = null;
   private remoteStream: any = null;
   private currentRoom: string | null = null;
   private isNativeSupported = isNativeWebRTCAvailable;
+  private isVideoEnabled = false;
+  private isFrontCamera = true;
 
   constructor() {
     this.isNativeSupported = isNativeWebRTCAvailable;
@@ -207,13 +214,13 @@ class WebRTCService {
       // 2. Hardware audio mode initialization for background persistence
       try {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
+          allowsRecordingIOS: false, // Prevents expo-av from holding an active mic sidetone loopback
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false,
           shouldDuckAndroid: false,
           staysActiveInBackground: true,
         });
-        console.log('📱 Hardware AudioMode active (staysActiveInBackground: true)');
+        console.log('📱 Hardware AudioMode active (staysActiveInBackground: true, no loopback)');
       } catch (e: any) {
         console.warn('AudioMode init notice:', e.message);
       }
@@ -221,12 +228,20 @@ class WebRTCService {
       // Release any lingering past audio streams
       this.stopLocalAudio();
 
-      // Request hardware microphone access (audio only, no video)
+      // Request hardware microphone access with full Acoustic Echo Cancellation (AEC) & Sidetone Suppression
       const stream = await mediaDevicesInstance.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          googEchoCancellation: true,
+          googEchoCancellation2: true,
+          googAutoGainControl: true,
+          googNoiseSuppression: true,
+          googHighpassFilter: true,
+          googTypingNoiseDetection: true,
+          googAudioMirroring: false,
+          googDAEchoCancellation: true,
         },
         video: false,
       });
@@ -238,6 +253,161 @@ class WebRTCService {
       console.error('❌ Failed to access microphone:', error.message || error);
       return null;
     }
+  }
+
+  /**
+   * Request Camera Permission & Capture Local Video Stream (720p 30fps)
+   * -------------------------------------------------------------------
+   * Direct Phone-to-Phone HD video capture with zero server processing cost.
+   */
+  async startLocalVideo(): Promise<any> {
+    if (!this.isNativeSupported || !mediaDevicesInstance) {
+      console.warn(
+        '⚠️ WebRTC Video Notice: Simulated video stream for development build.',
+      );
+      this.isVideoEnabled = true;
+      return null;
+    }
+
+    try {
+      if (Platform.OS === 'android') {
+        const hasPermission = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+        );
+        if (!hasPermission) {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.CAMERA,
+            {
+              title: 'Camera Access Needed',
+              message:
+                'FluentUp requires camera access for 1-on-1 English face-to-face video conversation.',
+              buttonPositive: 'Allow',
+              buttonNegative: 'Deny',
+            },
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            console.warn('❌ Camera permission denied by user.');
+            return null;
+          }
+        }
+      }
+
+      this.stopLocalVideo();
+
+      const videoStream = await mediaDevicesInstance.getUserMedia({
+        audio: false,
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+          facingMode: 'user',
+        },
+      });
+
+      this.localVideoStream = videoStream;
+      this.isVideoEnabled = true;
+      this.isFrontCamera = true;
+
+      // Dynamically attach video track to active peer connection if connected
+      if (this.peerConnection) {
+        const videoTrack = videoStream.getVideoTracks()[0];
+        if (videoTrack) {
+          this.peerConnection.addTrack(videoTrack, videoStream);
+          await this.renegotiateOffer();
+        }
+      }
+
+      console.log('📹 Hardware camera video stream acquired successfully!');
+      return videoStream;
+    } catch (err: any) {
+      console.error('❌ Failed to start local video:', err.message || err);
+      return null;
+    }
+  }
+
+  /**
+   * Renegotiate SDP Offer seamlessly when video track is added mid-call
+   */
+  async renegotiateOffer() {
+    if (!this.peerConnection || !this.currentRoom) return;
+    try {
+      console.log('🔄 Renegotiating WebRTC offer for live video track addition...');
+      const offer = await this.peerConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+      offer.sdp = optimizeOpusSdp(offer.sdp);
+      await this.peerConnection.setLocalDescription(offer);
+      callSocketService.sendOffer(this.currentRoom, offer);
+    } catch (err: any) {
+      console.warn('Renegotiate offer notice:', err.message);
+    }
+  }
+
+  /**
+   * Toggle Video On / Off mid-call without disrupting active audio conversation
+   */
+  async toggleVideo(enabled: boolean): Promise<boolean> {
+    if (enabled) {
+      if (!this.localVideoStream) {
+        const stream = await this.startLocalVideo();
+        return !!stream;
+      }
+      this.localVideoStream.getVideoTracks().forEach((track: any) => {
+        track.enabled = true;
+      });
+      this.isVideoEnabled = true;
+      await this.renegotiateOffer();
+      return true;
+    } else {
+      if (this.localVideoStream) {
+        this.localVideoStream.getVideoTracks().forEach((track: any) => {
+          track.enabled = false;
+        });
+      }
+      this.isVideoEnabled = false;
+      return false;
+    }
+  }
+
+  /**
+   * Flip Camera (Front <-> Back lens)
+   */
+  switchCamera(): boolean {
+    if (this.localVideoStream) {
+      this.localVideoStream.getVideoTracks().forEach((track: any) => {
+        if (typeof track._switchCamera === 'function') {
+          track._switchCamera();
+        }
+      });
+      this.isFrontCamera = !this.isFrontCamera;
+      return this.isFrontCamera;
+    }
+    return true;
+  }
+
+  getLocalVideoStream(): any {
+    return this.localVideoStream;
+  }
+
+  getRemoteStream(): any {
+    return this.remoteStream;
+  }
+
+  getIsVideoEnabled(): boolean {
+    return this.isVideoEnabled;
+  }
+
+  getIsFrontCamera(): boolean {
+    return this.isFrontCamera;
+  }
+
+  stopLocalVideo() {
+    if (this.localVideoStream) {
+      this.localVideoStream.getTracks().forEach((t: any) => t.stop());
+      this.localVideoStream = null;
+    }
+    this.isVideoEnabled = false;
   }
 
   /**
@@ -397,7 +567,7 @@ class WebRTCService {
             console.log('📤 Generating SDP Offer as caller...');
             const offer = await this.peerConnection.createOffer({
               offerToReceiveAudio: true,
-              offerToReceiveVideo: false,
+              offerToReceiveVideo: true,
             });
             offer.sdp = optimizeOpusSdp(offer.sdp);
             await this.peerConnection.setLocalDescription(offer);
@@ -446,7 +616,7 @@ class WebRTCService {
     try {
       if (route === 'speaker') {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
+          allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false, // Force Speakerphone
           shouldDuckAndroid: false,
@@ -455,7 +625,7 @@ class WebRTCService {
         console.log('🔊 Hardware audio routed to: LOUDSPEAKER');
       } else if (route === 'earpiece') {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
+          allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: true, // Phone top ear speaker
           shouldDuckAndroid: false,
@@ -465,24 +635,13 @@ class WebRTCService {
       } else {
         // Bluetooth / Headset default: allow Android OS to prioritize Bluetooth SCO / A2DP
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
+          allowsRecordingIOS: false, // Prevents earphone mic sidetone from echoing back into ear
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false,
           shouldDuckAndroid: false,
           staysActiveInBackground: true,
         });
-
-        // Set hardware recording device specifically to connected headset mic
-        try {
-          const status = await detectAudioDevices();
-          if (status.hasHeadset && status.headsetUid) {
-            await setPreferredAudioInput(status.headsetUid);
-          }
-        } catch (inputErr) {
-          // Fallback gracefully
-        }
-
-        console.log('🎧 Hardware audio & mic routed to: EARPHONE / BLUETOOTH');
+        console.log('🎧 Hardware audio routed to: EARPHONE / BLUETOOTH (Echo/Sidetone eliminated)');
       }
     } catch (e: any) {
       console.warn('Could not set audio route mode:', e.message);
@@ -497,8 +656,9 @@ class WebRTCService {
    * 6. Call Teardown & Resource Cleanup
    */
   cleanup() {
-    console.log('🔌 Cleaning up WebRTC audio connection and releasing mic...');
+    console.log('🔌 Cleaning up WebRTC audio connection and releasing mic & camera...');
     this.stopLocalAudio();
+    this.stopLocalVideo();
     this.setSpeaker(false).catch(() => {});
 
     if (this.peerConnection) {

@@ -93,11 +93,12 @@ export const AssessmentApi = {
 
 // 3. Matchmaking Radar APIs
 export const MatchmakingApi = {
-  // 30s matching radar queue mein enter hona
-  join: async (token: string) => {
+  // 30s matching radar queue mein enter hona (supports audio vs video mode)
+  join: async (token: string, mode?: 'audio' | 'video') => {
     return fetchApi<any>('/matchmaking/join', {
       method: 'POST',
       token,
+      body: { mode: mode || 'audio' },
     });
   },
 

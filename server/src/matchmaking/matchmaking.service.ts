@@ -166,7 +166,10 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
    * User ko 30s matching radar queue mein enter karta hai.
    * Purane stale matches wipe karke bilkul fresh search shuru karta hai.
    */
-  async joinQueue(user: User): Promise<{ status: string; message: string; elapsedSeconds: number; match?: MatchResult }> {
+  async joinQueue(
+    user: User,
+    mode: 'audio' | 'video' = 'audio',
+  ): Promise<{ status: string; message: string; elapsedSeconds: number; match?: MatchResult }> {
     // Step 1: Wipe any old/stale matches so user is not reconnected to past callers
     await this.clearMatchForUser(user.id);
 
@@ -187,6 +190,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       address: (user as any).address || null,
       education: (user as any).education || null,
       hobbies: (user as any).hobbies || [],
+      mode,
     };
 
     // Step 3: Check for an active, online candidate already waiting in queue
@@ -321,19 +325,25 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
 
     const waitDurationSec = Math.floor((now - currentLearner.joinedAt) / 1000);
 
+    // Prioritize candidates with the same preferred mode (Video with Video, Audio with Audio)
+    const targetMode = currentLearner.mode || 'audio';
+    const sameModeCandidates = candidates.filter((c) => (c.mode || 'audio') === targetMode);
+    // In the first 15 seconds, strictly match with same mode if available
+    const pool = (waitDurationSec < 15 && sameModeCandidates.length > 0) ? sameModeCandidates : candidates;
+
     // Tier 1: Exact level match
-    const exactMatch = candidates.find((c) => c.level === currentLearner.level);
+    const exactMatch = pool.find((c) => c.level === currentLearner.level);
     if (exactMatch) return exactMatch;
 
     // Tier 2: Adjacent level match after 10 seconds
     if (waitDurationSec >= 10) {
-      const adjacentMatch = candidates.find((c) => this.isAdjacentLevel(currentLearner.level, c.level));
+      const adjacentMatch = pool.find((c) => this.isAdjacentLevel(currentLearner.level, c.level));
       if (adjacentMatch) return adjacentMatch;
     }
 
     // Tier 3: Any approved active online partner after 20 seconds
-    if (waitDurationSec >= 20 && candidates.length > 0) {
-      return candidates[0];
+    if (waitDurationSec >= 20 && pool.length > 0) {
+      return pool[0];
     }
 
     return null;
@@ -389,6 +399,8 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
     const actualA = dbUserA || learnerA;
     const actualB = dbUserB || learnerB;
     const matchTime = Date.now();
+    const sessionMode: 'audio' | 'video' =
+      (learnerA.mode === 'video' || learnerB.mode === 'video') ? 'video' : 'audio';
 
     // Match payload for Learner A
     const matchForA: MatchResult = {
@@ -396,6 +408,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       roomName,
       topic: randomTopic,
       createdAt: matchTime,
+      mode: sessionMode,
       partner: {
         id: learnerB.userId,
         name: (actualB as any).username || learnerB.username,
@@ -413,6 +426,7 @@ export class MatchmakingService implements OnModuleInit, OnModuleDestroy {
       roomName,
       topic: randomTopic,
       createdAt: matchTime,
+      mode: sessionMode,
       partner: {
         id: learnerA.userId,
         name: (actualA as any).username || learnerA.username,

@@ -61,6 +61,7 @@ export interface SpeakingPartner {
   address?: string;                 // Partner's city / location
   education?: string;               // Partner's college / education
   hobbies?: string[];               // Partner's hobbies list
+  mode?: 'audio' | 'video';         // Call mode preference
 }
 
 // Full Context Type Definition
@@ -102,7 +103,8 @@ interface AppContextType {
   isMatchmaking: boolean;
   matchmakingTime: number;          // 0 to 30 seconds timer
   matchmakingRangeExpanded: boolean;// 20s ke baad expanded notice
-  startMatchmaking: () => void;
+  callMode: 'audio' | 'video';      // Active matching mode
+  startMatchmaking: (mode?: 'audio' | 'video') => void;
   cancelMatchmaking: () => void;
 
   // Active Audio Call Engine
@@ -247,6 +249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isMatchmaking, setIsMatchmaking] = useState<boolean>(false);
   const [matchmakingTime, setMatchmakingTime] = useState<number>(0);
   const [matchmakingRangeExpanded, setMatchmakingRangeExpanded] = useState<boolean>(false);
+  const [callMode, setCallMode] = useState<'audio' | 'video'>('audio');
 
   // 4. Active Call State (Initially null - populated ONLY when a REAL partner matches!)
   const [activePartner, setActivePartner] = useState<SpeakingPartner | null>(null);
@@ -433,6 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             roomName: res.match.roomName,
             callId: res.match.callId,
             durationInCall: 0,
+            mode: res.match.mode || callMode,
           };
 
           setActivePartner(matchedPartner);
@@ -707,17 +711,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Matchmaking: Start
-  const startMatchmaking = async () => {
+  const startMatchmaking = async (mode: 'audio' | 'video' = 'audio') => {
     setActivePartner(null);
     setCallDuration(0);
+    setCallMode(mode);
     setIsMatchmaking(true);
     setMatchmakingTime(0);
     setMatchmakingRangeExpanded(false);
 
     // Cancel any stale queue or match on server first to ensure 100% fresh queue entry
     await MatchmakingApi.cancel(authToken).catch(() => {});
-    // Call live server to enter queue
-    await MatchmakingApi.join(authToken);
+    // Call live server to enter queue with selected mode
+    await MatchmakingApi.join(authToken, mode);
   };
 
   // Matchmaking: Cancel
@@ -857,6 +862,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isMatchmaking,
         matchmakingTime,
         matchmakingRangeExpanded,
+        callMode,
         startMatchmaking,
         cancelMatchmaking,
 

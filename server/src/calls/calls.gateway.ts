@@ -269,6 +269,23 @@ export class CallsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
+   * Real-time Video Stream Status Toggle
+   * --------------------------------------------------------
+   * Jab user mid-call camera turn ON ya OFF karta hai.
+   */
+  @SubscribeMessage('video-toggle')
+  handleVideoToggle(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomName: string; isVideoEnabled: boolean; userId: string },
+  ) {
+    this.logger.log(`📹 User ${payload.userId} in room ${payload.roomName} toggled video: ${payload.isVideoEnabled}`);
+    client.to(payload.roomName).emit('partner-video-status', {
+      isVideoEnabled: payload.isVideoEnabled,
+      userId: payload.userId,
+    });
+  }
+
+  /**
    * 6. Socket Heartbeat / Keepalive
    * --------------------------------------------------------
    * Render reverse proxy ke idle disconnect ko rokne ke liye

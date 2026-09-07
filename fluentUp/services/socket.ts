@@ -79,6 +79,19 @@ class CallSocketService {
     }
   }
 
+  onPartnerVideoStatus(callback: (data: { isVideoEnabled: boolean; userId: string }) => void) {
+    if (this.socket) {
+      this.socket.off('partner-video-status');
+      this.socket.on('partner-video-status', callback);
+    }
+  }
+
+  toggleVideo(roomName: string, isVideoEnabled: boolean, userId: string) {
+    if (this.socket) {
+      this.socket.emit('video-toggle', { roomName, isVideoEnabled, userId });
+    }
+  }
+
   onCallEnded(callback: (data: any) => void) {
     if (this.socket) {
       this.socket.off('call-ended');

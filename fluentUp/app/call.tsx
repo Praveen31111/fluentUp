@@ -34,7 +34,7 @@ import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { EndCallSheet } from '@/components/EndCallSheet';
 import { useApp } from '@/context/AppContext';
 import { callSocketService } from '@/services/socket';
-import { webrtcService } from '@/services/webrtc';
+import { webrtcService, RTCView } from '@/services/webrtc';
 
 // Safe KeepAwake helper (prevents native module crash if missing or mismatched)
 let safeKeepAwake: {
@@ -113,12 +113,23 @@ export default function CallScreen() {
   const [isPeerConnected, setIsPeerConnected] = useState<boolean>(false);
   const [livePartner, setLivePartner] = useState<any>(activePartner);
 
+  // Video Call & Mid-Call Switch State
+  const [isLocalVideoOn, setIsLocalVideoOn] = useState<boolean>(false);
+  const [isPartnerVideoOn, setIsPartnerVideoOn] = useState<boolean>(false);
+  const [isFrontCamera, setIsFrontCamera] = useState<boolean>(true);
+  const [localVideoStream, setLocalVideoStream] = useState<any>(null);
+  const [remoteStream, setRemoteStream] = useState<any>(null);
+  const [videoNotice, setVideoNotice] = useState<string | null>(null);
+
   // Sync initial partner data
   React.useEffect(() => {
     if (activePartner) {
       setLivePartner(activePartner);
     }
   }, [activePartner]);
+
+  // Combined real-time partner data
+  const displayPartner = livePartner || activePartner;
 
   // Format seconds to MM:SS string
   const formatTime = (seconds: number) => {
@@ -156,8 +167,9 @@ export default function CallScreen() {
           activePartner.roomName,
           isCaller,
           (_remoteStream) => {
-            console.log('🔊 Remote audio stream active in Call screen');
+            console.log('🔊 Remote stream active in Call screen');
             setIsPeerConnected(true);
+            setRemoteStream(_remoteStream);
           },
           (state) => {
             console.log('🌐 WebRTC connection state:', state);
@@ -168,6 +180,18 @@ export default function CallScreen() {
             }
           },
         );
+
+        // Auto-enable video if user matched in video mode
+        if (activePartner.mode === 'video') {
+          setTimeout(async () => {
+            const stream = await webrtcService.startLocalVideo();
+            if (stream) {
+              setIsLocalVideoOn(true);
+              setLocalVideoStream(stream);
+              callSocketService.toggleVideo(activePartner.roomName!, true, user.id);
+            }
+          }, 800);
+        }
       }
     }
 
@@ -223,6 +247,17 @@ export default function CallScreen() {
       }
     });
 
+    callSocketService.onPartnerVideoStatus((data) => {
+      console.log('📹 Partner video toggle received:', data.isVideoEnabled);
+      setIsPartnerVideoOn(data.isVideoEnabled);
+      if (data.isVideoEnabled) {
+        setVideoNotice(`${displayPartner?.name || 'Partner'} started video!`);
+        setTimeout(() => setVideoNotice(null), 4000);
+      } else {
+        setVideoNotice(null);
+      }
+    });
+
     const handleRemoteEnd = (data: any) => {
       console.log('🛑 Call ended remotely (partner left or disconnected):', data);
       webrtcService.cleanup();
@@ -231,7 +266,26 @@ export default function CallScreen() {
 
     callSocketService.onCallEnded(handleRemoteEnd);
     callSocketService.onPartnerDisconnected(handleRemoteEnd);
-  }, [router]);
+  }, [router, displayPartner?.name]);
+
+  // Mid-Call Video Toggle (Audio ⇄ Video)
+  const handleToggleVideo = async () => {
+    const nextState = !isLocalVideoOn;
+    setIsLocalVideoOn(nextState);
+    const success = await webrtcService.toggleVideo(nextState);
+    if (nextState && success) {
+      setLocalVideoStream(webrtcService.getLocalVideoStream());
+    }
+    if (activePartner?.roomName && user?.id) {
+      callSocketService.toggleVideo(activePartner.roomName, nextState, user.id);
+    }
+  };
+
+  // Flip Camera Front <-> Back Lens
+  const handleFlipCamera = () => {
+    const isFront = webrtcService.switchCamera();
+    setIsFrontCamera(isFront);
+  };
 
   // 6. Seamless Background Audio: Call continues uninterrupted when user opens another app
   React.useEffect(() => {
@@ -267,9 +321,6 @@ export default function CallScreen() {
     };
   }, [activePartner?.roomName, user]);
 
-  // Combined real-time partner data
-  const displayPartner = livePartner || activePartner;
-
   // Confirm End Call -> Navigate to Feedback Screen
   const handleConfirmEndCall = () => {
     setShowEndSheet(false);
@@ -296,29 +347,86 @@ export default function CallScreen() {
           </View>
         </View>
 
-        {/* Center Partner Presence & Voice Rhythm */}
-        <View style={styles.centerPresence}>
-          {/* Partner Avatar with gentle breathing halo */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatarGlowOuter} />
-            <View style={styles.avatarGlowInner} />
-            <View style={styles.avatarWrapper}>
-              <Image
-                source={{
-                  uri:
-                    (displayPartner?.avatar &&
-                      (displayPartner.avatar.startsWith('http') || displayPartner.avatar.startsWith('data:image/')))
-                      ? displayPartner.avatar
-                      : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
-                }}
-                style={styles.avatarImg}
-              />
-              {/* Voice active badge */}
-              <View style={styles.voiceIndicatorBadge}>
-                <MaterialIcons name="graphic-eq" size={13} color={FluentColors.onPrimary} />
-              </View>
+        {/* Floating Video Switch Banner / Notice */}
+        {videoNotice ? (
+          <View style={styles.videoNoticeBanner}>
+            <MaterialIcons name="videocam" size={18} color={FluentColors.onPrimary} />
+            <Text style={styles.videoNoticeText}>{videoNotice}</Text>
+            {!isLocalVideoOn ? (
+              <TouchableOpacity
+                style={styles.joinVideoBtn}
+                onPress={handleToggleVideo}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.joinVideoBtnText}>Join Video</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Self Floating Picture-in-Picture (PiP) Window */}
+        {isLocalVideoOn && localVideoStream && RTCView ? (
+          <View style={styles.selfPipContainer}>
+            <RTCView
+              streamURL={localVideoStream.toURL()}
+              style={styles.selfPipVideo}
+              objectFit="cover"
+              mirror={isFrontCamera}
+              zOrder={2}
+            />
+            <TouchableOpacity
+              style={styles.pipFlipBtn}
+              onPress={handleFlipCamera}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="flip-camera-android" size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.selfPipBadge}>
+              <Text style={styles.selfPipBadgeText}>YOU</Text>
             </View>
           </View>
+        ) : null}
+
+        {/* Center Partner Presence & Voice Rhythm */}
+        <View style={styles.centerPresence}>
+          {/* 1. Partner Live Video Feed OR Avatar with gentle halo */}
+          {isPartnerVideoOn && remoteStream && RTCView ? (
+            <View style={styles.partnerVideoCard}>
+              <RTCView
+                streamURL={remoteStream.toURL()}
+                style={styles.partnerVideoFeed}
+                objectFit="cover"
+                zOrder={0}
+              />
+              <View style={styles.partnerVideoOverlay}>
+                <View style={styles.partnerVideoPill}>
+                  <View style={styles.liveGreenDot} />
+                  <Text style={styles.partnerVideoPillText}>{displayPartner?.name || 'Partner'} · HD Live</Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarGlowOuter} />
+              <View style={styles.avatarGlowInner} />
+              <View style={styles.avatarWrapper}>
+                <Image
+                  source={{
+                    uri:
+                      (displayPartner?.avatar &&
+                        (displayPartner.avatar.startsWith('http') || displayPartner.avatar.startsWith('data:image/')))
+                        ? displayPartner.avatar
+                        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
+                  }}
+                  style={styles.avatarImg}
+                />
+                {/* Voice active badge */}
+                <View style={styles.voiceIndicatorBadge}>
+                  <MaterialIcons name="graphic-eq" size={13} color={FluentColors.onPrimary} />
+                </View>
+              </View>
+            </View>
+          )}
 
           {/* Partner Details */}
           <Text style={styles.partnerName}>{displayPartner?.name || 'Speaking Partner'}</Text>
@@ -338,7 +446,11 @@ export default function CallScreen() {
           </View>
           <Text style={styles.speakingStatus}>
             {!isPeerConnected
-              ? `Connecting audio with ${displayPartner?.name || 'partner'}...`
+              ? `Connecting with ${displayPartner?.name || 'partner'}...`
+              : isLocalVideoOn && isPartnerVideoOn
+              ? `${displayPartner?.name || 'Partner'} is on live video · Speaking live`
+              : isPartnerVideoOn
+              ? `${displayPartner?.name || 'Partner'} is on video · Tap Video to join`
               : isMuted
               ? 'Your microphone is muted'
               : isPartnerMuted
@@ -414,7 +526,49 @@ export default function CallScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* 2. Audio Route Switcher (Dynamic Earphone / Speaker / Earpiece) */}
+            {/* 2. Video Toggle (Audio ⇄ Video Mid-Call Switch) */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.dockButton}
+              onPress={handleToggleVideo}
+            >
+              <View
+                style={[
+                  styles.btnCircle,
+                  isLocalVideoOn ? styles.btnCircleVideoActive : styles.btnCircleDefault,
+                ]}
+              >
+                <MaterialIcons
+                  name={isLocalVideoOn ? 'videocam' : 'videocam-off'}
+                  size={24}
+                  color={isLocalVideoOn ? FluentColors.onPrimary : FluentColors.text}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.btnLabel,
+                  isLocalVideoOn && { color: FluentColors.primaryContainer, fontWeight: '700' },
+                ]}
+              >
+                {isLocalVideoOn ? 'Video On' : 'Video Off'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* 3. Camera Flip Button (Visible when Local Video is ON) */}
+            {isLocalVideoOn ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.dockButton}
+                onPress={handleFlipCamera}
+              >
+                <View style={[styles.btnCircle, styles.btnCircleDefault]}>
+                  <MaterialIcons name="flip-camera-android" size={22} color={FluentColors.text} />
+                </View>
+                <Text style={styles.btnLabel}>Flip</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* 4. Audio Route Switcher (Dynamic Earphone / Speaker / Earpiece) */}
             <TouchableOpacity
               activeOpacity={0.8}
               style={styles.dockButton}
@@ -453,7 +607,7 @@ export default function CallScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* 3. End Call Button */}
+            {/* 5. End Call Button */}
             <TouchableOpacity
               activeOpacity={0.85}
               style={styles.dockButton}
@@ -760,5 +914,129 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     color: FluentColors.primary,
+  },
+  btnCircleVideoActive: {
+    backgroundColor: FluentColors.primaryContainer,
+  },
+  partnerVideoCard: {
+    width: 260,
+    height: 180,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#1A1A1A',
+    position: 'relative',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  partnerVideoFeed: {
+    width: '100%',
+    height: '100%',
+  },
+  partnerVideoOverlay: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+  },
+  partnerVideoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  liveGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#4ADE80',
+  },
+  partnerVideoPillText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  selfPipContainer: {
+    position: 'absolute',
+    top: 75,
+    right: 20,
+    width: 100,
+    height: 140,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#1E1E1E',
+    borderWidth: 2,
+    borderColor: FluentColors.primaryContainer,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 99,
+  },
+  selfPipVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  pipFlipBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selfPipBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  selfPipBadgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  videoNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: FluentColors.primaryContainer,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 10,
+    marginBottom: 4,
+    gap: 10,
+    zIndex: 90,
+  },
+  videoNoticeText: {
+    color: FluentColors.onPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  joinVideoBtn: {
+    backgroundColor: FluentColors.surfaceLowest,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  joinVideoBtnText: {
+    color: FluentColors.primaryContainer,
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

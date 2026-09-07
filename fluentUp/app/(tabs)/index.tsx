@@ -35,14 +35,14 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, startMatchmaking } = useApp();
 
-  const [isConnecting, setIsConnecting] = useState<boolean>(false);
+  const [connectingMode, setConnectingMode] = useState<'audio' | 'video' | null>(null);
 
-  // Find Partner Action
-  const handleFindPartner = () => {
-    setIsConnecting(true);
-    startMatchmaking();
+  // Find Partner Action (Supports Audio vs Video)
+  const handleFindPartner = (mode: 'audio' | 'video' = 'audio') => {
+    setConnectingMode(mode);
+    startMatchmaking(mode);
     setTimeout(() => {
-      setIsConnecting(false);
+      setConnectingMode(null);
       router.push('/matchmaking');
     }, 450);
   };
@@ -102,47 +102,88 @@ export default function HomeScreen() {
           <Text style={styles.greetingMain}>Ready to speak?</Text>
         </View>
 
-        {/* Hero Interactive Find Partner Card */}
+        {/* Card 1: Audio Conversation Hero Card */}
         <View style={styles.heroCard}>
           {/* Center Living Pulse Orb */}
           <View style={styles.orbContainer}>
             <PulseOrb
-              size={72}
+              size={68}
               iconName="mic"
               isPulsing={true}
-              onPress={handleFindPartner}
+              onPress={() => handleFindPartner('audio')}
             />
           </View>
 
           {/* Value Promise */}
           <View style={styles.heroTextArea}>
-            <Text style={styles.heroCardTitle}>Natural 1-on-1 Dialogue</Text>
+            <Text style={styles.heroCardTitle}>Natural 1-on-1 Voice Dialogue</Text>
             <Text style={styles.heroCardSubtitle}>
-              Matched with speakers at your fluency pace. No judgment, just flow.
+              Low-stress voice practice at your fluency pace. No camera, no judgment, just natural flow.
             </Text>
           </View>
 
-          {/* Hero Action Button: "Find a partner" */}
+          {/* Action Button: "Find Voice Partner" */}
           <View style={styles.heroButtonWrapper}>
             <TouchableOpacity
               activeOpacity={0.9}
-              style={[styles.findPartnerBtn, isConnecting && { opacity: 0.85 }]}
-              onPress={handleFindPartner}
+              style={[styles.findPartnerBtn, connectingMode === 'audio' && { opacity: 0.85 }]}
+              onPress={() => handleFindPartner('audio')}
             >
-              {isConnecting ? (
+              {connectingMode === 'audio' ? (
                 <>
                   <MaterialIcons name="sync" size={20} color={FluentColors.onPrimary} />
-                  <Text style={styles.findPartnerText}>Connecting to queue...</Text>
+                  <Text style={styles.findPartnerText}>Connecting voice queue...</Text>
                 </>
               ) : (
                 <>
-                  <Text style={styles.findPartnerText}>Find a partner</Text>
-                  <MaterialIcons name="arrow-forward" size={20} color={FluentColors.onPrimary} />
+                  <MaterialIcons name="mic" size={20} color={FluentColors.onPrimary} />
+                  <Text style={styles.findPartnerText}>Find a Voice Partner</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color={FluentColors.onPrimary} />
                 </>
               )}
             </TouchableOpacity>
-            <Text style={styles.heroCardFootnote}>One conversation at a time.</Text>
+            <Text style={styles.heroCardFootnote}>Pure audio · Speak comfortably from anywhere.</Text>
           </View>
+        </View>
+
+        {/* Card 2: Dedicated Face-to-Face Video Call Partner Card */}
+        <View style={styles.videoHeroCard}>
+          <View style={styles.videoCardTopRow}>
+            <View style={styles.videoIconWrapper}>
+              <MaterialIcons name="videocam" size={24} color="#FFFFFF" />
+            </View>
+            <View style={styles.videoBadgePill}>
+              <View style={styles.liveGreenDot} />
+              <Text style={styles.videoBadgePillText}>FACE-TO-FACE · HD VIDEO</Text>
+            </View>
+          </View>
+
+          <View style={styles.videoTextArea}>
+            <Text style={styles.videoCardTitle}>Practice with Live Video</Text>
+            <Text style={styles.videoCardSubtitle}>
+              Master eye contact, natural facial expressions & body language confidence with peer learners.
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            style={[styles.findVideoPartnerBtn, connectingMode === 'video' && { opacity: 0.85 }]}
+            onPress={() => handleFindPartner('video')}
+          >
+            {connectingMode === 'video' ? (
+              <>
+                <MaterialIcons name="sync" size={20} color="#FFFFFF" />
+                <Text style={styles.findVideoPartnerText}>Connecting video queue...</Text>
+              </>
+            ) : (
+              <>
+                <MaterialIcons name="videocam" size={20} color="#FFFFFF" />
+                <Text style={styles.findVideoPartnerText}>Find a Video Partner</Text>
+                <MaterialIcons name="arrow-forward" size={18} color="#FFFFFF" />
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.videoCardFootnote}>100% Free Direct P2P · Zero Bandwidth Cost</Text>
         </View>
 
         {/* Quick Cues & Daily Target Bento */}
@@ -399,6 +440,100 @@ const styles = StyleSheet.create({
   heroCardFootnote: {
     fontSize: 12,
     color: FluentColors.secondaryText,
+  },
+  videoHeroCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 24,
+    padding: 22,
+    alignItems: 'flex-start',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 4,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  videoCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 14,
+  },
+  videoIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(99, 102, 241, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  liveGreenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#34D399',
+  },
+  videoBadgePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#E2E8F0',
+    letterSpacing: 0.8,
+  },
+  videoTextArea: {
+    marginBottom: 16,
+  },
+  videoCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    marginBottom: 6,
+  },
+  videoCardSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#94A3B8',
+  },
+  findVideoPartnerBtn: {
+    width: '100%',
+    height: 52,
+    backgroundColor: '#4F46E5',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#4F46E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  findVideoPartnerText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  videoCardFootnote: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 8,
+    alignSelf: 'center',
   },
   bentoRow: {
     flexDirection: 'row',
