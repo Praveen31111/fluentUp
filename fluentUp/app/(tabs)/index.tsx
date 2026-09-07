@@ -120,7 +120,7 @@ export default function HomeScreen() {
               <MaterialIcons name="all-inclusive" size={13} color="#15803D" />
               <Text style={styles.unlimitedBadgeText}>100% FREE · UNLIMITED CALLING</Text>
             </View>
-            <Text style={styles.heroCardTitle}>Natural 1-on-1 Voice Dialogue</Text>
+            <Text style={styles.heroCardTitle}>Natural 1-on-1 Voice Call</Text>
             <Text style={styles.heroCardSubtitle}>
               Unlimited voice practice with real learners. Speak freely for as many hours as you like with zero limits.
             </Text>
@@ -168,7 +168,7 @@ export default function HomeScreen() {
               <MaterialIcons name="all-inclusive" size={13} color="#15803D" />
               <Text style={styles.unlimitedBadgeText}>100% FREE · UNLIMITED VIDEO</Text>
             </View>
-            <Text style={styles.heroCardTitle}>Face-to-Face 1-on-1 Video Dialogue</Text>
+            <Text style={styles.heroCardTitle}>Face-to-Face 1-on-1 Video Call</Text>
             <Text style={styles.heroCardSubtitle}>
               Unlimited HD video practice. Master eye contact, natural facial expressions & body language confidence.
             </Text>
