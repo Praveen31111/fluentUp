@@ -47,6 +47,18 @@ export default function HomeScreen() {
     }, 450);
   };
 
+  // Dynamic time-based greeting according to user's device clock
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 4 && hour < 12) {
+      return 'Good morning';
+    } else if (hour >= 12 && hour < 17) {
+      return 'Good afternoon';
+    } else {
+      return 'Good evening';
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor={FluentColors.background} />
@@ -97,7 +109,7 @@ export default function HomeScreen() {
         {/* Personalized Greeting */}
         <View style={styles.greetingArea}>
           <Text style={styles.greetingSub}>
-            Good evening, {user?.username?.split(' ')[0] || 'Learner'}
+            {getGreeting()}, {user?.username?.split(' ')[0] || 'Learner'}
           </Text>
           <Text style={styles.greetingMain}>Ready to speak?</Text>
         </View>
