@@ -364,7 +364,21 @@ export default function CallScreen() {
           </View>
         ) : null}
 
-        {/* Self Floating Picture-in-Picture (PiP) Window */}
+        {/* WhatsApp Style: Full Screen Remote Partner Video */}
+        {isPartnerVideoOn && remoteStream && RTCView ? (
+          <View style={styles.fullScreenVideoWrapper}>
+            <RTCView
+              streamURL={remoteStream.toURL()}
+              style={styles.fullScreenVideo}
+              objectFit="cover"
+              zOrder={0}
+            />
+            <View style={styles.videoTopScrim} />
+            <View style={styles.videoBottomScrim} />
+          </View>
+        ) : null}
+
+        {/* WhatsApp Style: Self Floating Picture-in-Picture (PiP) Window */}
         {isLocalVideoOn && localVideoStream && RTCView ? (
           <View style={styles.selfPipContainer}>
             <RTCView
@@ -387,25 +401,21 @@ export default function CallScreen() {
           </View>
         ) : null}
 
-        {/* Center Partner Presence & Voice Rhythm */}
-        <View style={styles.centerPresence}>
-          {/* 1. Partner Live Video Feed OR Avatar with gentle halo */}
-          {isPartnerVideoOn && remoteStream && RTCView ? (
-            <View style={styles.partnerVideoCard}>
-              <RTCView
-                streamURL={remoteStream.toURL()}
-                style={styles.partnerVideoFeed}
-                objectFit="cover"
-                zOrder={0}
-              />
-              <View style={styles.partnerVideoOverlay}>
-                <View style={styles.partnerVideoPill}>
-                  <View style={styles.liveGreenDot} />
-                  <Text style={styles.partnerVideoPillText}>{displayPartner?.name || 'Partner'} · HD Live</Text>
-                </View>
-              </View>
+        {/* Center Partner Presence & Voice Rhythm (Audio Call Mode OR WhatsApp Video Status) */}
+        {isPartnerVideoOn && remoteStream && RTCView ? (
+          <View style={styles.centerVideoOverlay}>
+            <View style={styles.partnerVideoPill}>
+              <View style={styles.liveGreenDot} />
+              <Text style={styles.partnerVideoPillText}>{displayPartner?.name || 'Partner'} · HD Live</Text>
             </View>
-          ) : (
+            <Text style={styles.speakingStatusVideo}>
+              {isLocalVideoOn
+                ? '1-on-1 HD Video Active'
+                : `${displayPartner?.name || 'Partner'} is on video · Tap 'Video On' to join`}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.centerPresence}>
             <View style={styles.avatarSection}>
               <View style={styles.avatarGlowOuter} />
               <View style={styles.avatarGlowInner} />
@@ -416,6 +426,9 @@ export default function CallScreen() {
                       (displayPartner?.avatar &&
                         (displayPartner.avatar.startsWith('http') || displayPartner.avatar.startsWith('data:image/')))
                         ? displayPartner.avatar
+                        : (displayPartner?.photoUrl &&
+                          (displayPartner.photoUrl.startsWith('http') || displayPartner.photoUrl.startsWith('data:image/')))
+                        ? displayPartner.photoUrl
                         : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
                   }}
                   style={styles.avatarImg}
@@ -426,74 +439,70 @@ export default function CallScreen() {
                 </View>
               </View>
             </View>
-          )}
 
-          {/* Partner Details */}
-          <Text style={styles.partnerName}>{displayPartner?.name || 'Speaking Partner'}</Text>
-          <View style={styles.levelBadge}>
-            <Text style={styles.levelLang}>English</Text>
-            <View style={styles.levelDividerDot} />
-            <Text style={styles.levelCode}>{displayPartner?.level || 'C1 · Fluent'}</Text>
-          </View>
-
-          {/* Minimal Living Voice Waveform */}
-          <View style={styles.waveformContainer}>
-            <WaveformVisualizer
-              barCount={11}
-              activeColor={FluentColors.primaryContainer}
-              isSpeaking={isPeerConnected && !isPartnerMuted && !isMuted}
-            />
-          </View>
-          <Text style={styles.speakingStatus}>
-            {!isPeerConnected
-              ? `Connecting with ${displayPartner?.name || 'partner'}...`
-              : isLocalVideoOn && isPartnerVideoOn
-              ? `${displayPartner?.name || 'Partner'} is on live video · Speaking live`
-              : isPartnerVideoOn
-              ? `${displayPartner?.name || 'Partner'} is on video · Tap Video to join`
-              : isMuted
-              ? 'Your microphone is muted'
-              : isPartnerMuted
-              ? `${displayPartner?.name || 'Partner'} is currently muted`
-              : `${displayPartner?.name || 'Partner'} is connected · Speaking live`}
-          </Text>
-
-          {/* Partner Icebreaker Card (Address, Education, Hobbies) */}
-          <View style={styles.icebreakerCard}>
-            <View style={styles.icebreakerHeader}>
-              <MaterialIcons name="lightbulb" size={14} color={FluentColors.primary} />
-              <Text style={styles.icebreakerHeaderTitle}>PARTNER CONTEXT & HOBBIES</Text>
+            {/* Partner Details */}
+            <Text style={styles.partnerName}>{displayPartner?.name || 'Speaking Partner'}</Text>
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelLang}>English</Text>
+              <View style={styles.levelDividerDot} />
+              <Text style={styles.levelCode}>{displayPartner?.level || 'C1 · Fluent'}</Text>
             </View>
 
-            {/* Address & Education */}
-            <View style={styles.partnerMetaRow}>
-              {displayPartner?.address ? (
-                <View style={styles.partnerMetaPill}>
-                  <MaterialIcons name="location-on" size={13} color={FluentColors.primary} />
-                  <Text style={styles.partnerMetaText}>{displayPartner.address}</Text>
-                </View>
-              ) : null}
-
-              {displayPartner?.education ? (
-                <View style={styles.partnerMetaPill}>
-                  <MaterialIcons name="school" size={13} color={FluentColors.tertiary} />
-                  <Text style={styles.partnerMetaText}>{displayPartner.education}</Text>
-                </View>
-              ) : null}
+            {/* Minimal Living Voice Waveform */}
+            <View style={styles.waveformContainer}>
+              <WaveformVisualizer
+                barCount={11}
+                activeColor={FluentColors.primaryContainer}
+                isSpeaking={isPeerConnected && !isPartnerMuted && !isMuted}
+              />
             </View>
+            <Text style={styles.speakingStatus}>
+              {!isPeerConnected
+                ? `Connecting with ${displayPartner?.name || 'partner'}...`
+                : isMuted
+                ? 'Your microphone is muted'
+                : isPartnerMuted
+                ? `${displayPartner?.name || 'Partner'} is currently muted`
+                : `${displayPartner?.name || 'Partner'} is connected · Speaking live`}
+            </Text>
 
-            {/* Hobbies chips */}
-            {displayPartner?.hobbies && displayPartner.hobbies.length > 0 ? (
-              <View style={styles.partnerHobbiesWrap}>
-                {displayPartner.hobbies.slice(0, 4).map((h: string, i: number) => (
-                  <View key={i} style={styles.partnerHobbyTag}>
-                    <Text style={styles.partnerHobbyTagText}>{h}</Text>
-                  </View>
-                ))}
+            {/* Partner Icebreaker Card (Address, Education, Hobbies) */}
+            <View style={styles.icebreakerCard}>
+              <View style={styles.icebreakerHeader}>
+                <MaterialIcons name="lightbulb" size={14} color={FluentColors.primary} />
+                <Text style={styles.icebreakerHeaderTitle}>PARTNER CONTEXT & HOBBIES</Text>
               </View>
-            ) : null}
+
+              {/* Address & Education */}
+              <View style={styles.partnerMetaRow}>
+                {displayPartner?.address ? (
+                  <View style={styles.partnerMetaPill}>
+                    <MaterialIcons name="location-on" size={13} color={FluentColors.primary} />
+                    <Text style={styles.partnerMetaText}>{displayPartner.address}</Text>
+                  </View>
+                ) : null}
+
+                {displayPartner?.education ? (
+                  <View style={styles.partnerMetaPill}>
+                    <MaterialIcons name="school" size={13} color={FluentColors.tertiary} />
+                    <Text style={styles.partnerMetaText}>{displayPartner.education}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* Hobbies chips */}
+              {displayPartner?.hobbies && displayPartner.hobbies.length > 0 ? (
+                <View style={styles.partnerHobbiesWrap}>
+                  {displayPartner.hobbies.slice(0, 4).map((h: string, i: number) => (
+                    <View key={i} style={styles.partnerHobbyTag}>
+                      <Text style={styles.partnerHobbyTagText}>{h}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Bottom Floating Control Dock */}
         <View style={styles.bottomDockWrapper}>
@@ -918,23 +927,48 @@ const styles = StyleSheet.create({
   btnCircleVideoActive: {
     backgroundColor: FluentColors.primaryContainer,
   },
-  partnerVideoCard: {
-    width: 260,
-    height: 180,
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#1A1A1A',
-    position: 'relative',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 6,
+  fullScreenVideoWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#0F172A',
+    zIndex: 0,
   },
-  partnerVideoFeed: {
+  fullScreenVideo: {
     width: '100%',
     height: '100%',
+  },
+  videoTopScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 130,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+  },
+  videoBottomScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  centerVideoOverlay: {
+    alignItems: 'center',
+    marginVertical: 'auto',
+  },
+  speakingStatusVideo: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+    marginTop: 8,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   partnerVideoOverlay: {
     position: 'absolute',
@@ -946,8 +980,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   liveGreenDot: {
@@ -958,25 +992,25 @@ const styles = StyleSheet.create({
   },
   partnerVideoPillText: {
     color: '#FFF',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   selfPipContainer: {
     position: 'absolute',
     top: 75,
-    right: 20,
-    width: 100,
-    height: 140,
-    borderRadius: 14,
+    right: 18,
+    width: 105,
+    height: 155,
+    borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#1E1E1E',
     borderWidth: 2,
-    borderColor: FluentColors.primaryContainer,
+    borderColor: 'rgba(255, 255, 255, 0.55)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 10,
     zIndex: 99,
   },
   selfPipVideo: {

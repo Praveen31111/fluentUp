@@ -1,4 +1,4 @@
-# 📱 FluentUp - Complete Architecture & Development Guide
+ # 📱 FluentUp - Complete Architecture & Development Guide
 
 > **"Find someone. Speak English. Get better naturally."**  
 > Complete full-stack end-to-end blueprint, technology stack documentation, WebRTC audio pipeline, matchmaking engine, and step-by-step production build guide for the **FluentUp** Real-time English Speaking Mobile Application.

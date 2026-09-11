@@ -26,7 +26,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker/build/ImagePicker';
+import * as ImagePicker from 'expo-image-picker';
 import { FluentColors } from '@/constants/theme';
 import { useApp } from '@/context/AppContext';
 
@@ -84,7 +84,29 @@ export default function ProfileScreen() {
     setIsEditModalOpen(true);
   };
 
-  // Pick Photo from Mobile Gallery (Converts to Base64 data URI for universal cross-device sync)
+  // Convert local file URI or base64 asset to full Data URI
+  const convertAssetToDataUri = async (asset: any): Promise<string> => {
+    if (asset.base64) {
+      return `data:image/jpeg;base64,${asset.base64}`;
+    }
+    if (asset.uri) {
+      try {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        return await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (err) {
+        console.warn('Could not convert asset to data URI:', err);
+      }
+    }
+    return asset.uri || '';
+  };
+
+  // Pick Photo from Mobile Gallery
   const handlePickFromGallery = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -103,9 +125,7 @@ export default function ProfileScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const photoDataUri = asset.base64
-          ? `data:image/jpeg;base64,${asset.base64}`
-          : asset.uri;
+        const photoDataUri = await convertAssetToDataUri(asset);
         setEditPhotoUrl(photoDataUri);
       }
     } catch (e) {
@@ -131,9 +151,7 @@ export default function ProfileScreen() {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        const photoDataUri = asset.base64
-          ? `data:image/jpeg;base64,${asset.base64}`
-          : asset.uri;
+        const photoDataUri = await convertAssetToDataUri(asset);
         setEditPhotoUrl(photoDataUri);
       }
     } catch (e) {
@@ -444,7 +462,7 @@ export default function ProfileScreen() {
               {/* Photo Selector Section */}
               <Text style={styles.inputSectionTitle}>PROFILE PHOTO</Text>
               <Text style={styles.inputSectionSub}>
-                Photo aapke phone mein local save hoti hai (Database par 0 load).
+                Aapki profile photo calling partner aur friends ke sath live sync hogi.
               </Text>
 
               <View style={styles.photoPickerRow}>

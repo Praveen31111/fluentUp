@@ -335,20 +335,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await AsyncStorage.setItem('fluentup_user_local_photo', data.photoUrl);
       }
 
-      // 2. Neon PostgreSQL Database mein details aur photoUrl save karein (Live partner sync)
-      await AuthApi.updateProfile(authToken, {
-        username: data.username,
-        address: data.address,
-        education: data.education,
-        hobbies: data.hobbies,
-        bio: data.bio,
-        photoUrl: data.photoUrl,
-      });
+      // 2. Database mein details aur photoUrl save karein (Live partner sync)
+      const token = authToken || (await AsyncStorage.getItem('fluentup_auth_token')) || '';
+      if (token) {
+        await AuthApi.updateProfile(token, {
+          username: data.username,
+          address: data.address,
+          education: data.education,
+          hobbies: data.hobbies,
+          bio: data.bio,
+          photoUrl: data.photoUrl,
+        });
+      }
 
       // 3. React context state ko instantly update karein aur AsyncStorage mein persist karein
+      let newProfile: UserProfile | null = null;
       setUser((prev) => {
         if (!prev) return null;
-        const updated = {
+        const updated: UserProfile = {
           ...prev,
           username: data.username !== undefined ? data.username : prev.username,
           address: data.address !== undefined ? data.address : prev.address,
@@ -357,9 +361,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: data.bio !== undefined ? data.bio : prev.bio,
           photoUrl: data.photoUrl !== undefined ? data.photoUrl : prev.photoUrl,
         };
+        newProfile = updated;
         AsyncStorage.setItem('fluentup_user_profile', JSON.stringify(updated)).catch(() => {});
         return updated;
       });
+
+      // 4. Agar user active call room mein hai, toh live partner ko updated profile turant broadcast karein
+      if (activePartner?.roomName && newProfile) {
+        callSocketService.syncProfile(activePartner.roomName, {
+          id: (newProfile as UserProfile).id,
+          name: (newProfile as UserProfile).username,
+          username: (newProfile as UserProfile).username,
+          photoUrl: (newProfile as UserProfile).photoUrl,
+          avatar: (newProfile as UserProfile).photoUrl,
+          address: (newProfile as UserProfile).address,
+          education: (newProfile as UserProfile).education,
+          hobbies: (newProfile as UserProfile).hobbies,
+          bio: (newProfile as UserProfile).bio,
+          level: (newProfile as UserProfile).level,
+        });
+      }
 
       return true;
     } catch (e) {

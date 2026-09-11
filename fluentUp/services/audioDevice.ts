@@ -19,6 +19,12 @@ try {
   console.warn('Notice: ExponentAV native audio module not loaded:', e);
 }
 
+let webrtcModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  webrtcModule = require('react-native-webrtc');
+} catch (e) {}
+
 export interface ConnectedAudioDevice {
   name: string;
   type: string;
@@ -36,10 +42,11 @@ export interface AudioDeviceStatus {
 
 /**
  * Live audio hardware inputs inspect karta hai:
+ * Checks both WebRTC mediaDevices and Expo-AV ExponentAV
  * Returns: whether a wired or wireless earphone/neckband is currently connected.
  */
 export async function detectAudioDevices(): Promise<AudioDeviceStatus> {
-  if (Platform.OS === 'web' || !ExponentAV || typeof ExponentAV.getAvailableInputs !== 'function') {
+  if (Platform.OS === 'web') {
     return {
       hasHeadset: false,
       headsetName: null,
@@ -50,15 +57,48 @@ export async function detectAudioDevices(): Promise<AudioDeviceStatus> {
     };
   }
 
-  try {
-    const inputs: ConnectedAudioDevice[] = (await ExponentAV.getAvailableInputs()) || [];
+  let inputs: ConnectedAudioDevice[] = [];
 
+  // 1. Check native WebRTC enumerateDevices (Most accurate on Android & iOS in React Native)
+  if (webrtcModule && webrtcModule.mediaDevices && typeof webrtcModule.mediaDevices.enumerateDevices === 'function') {
+    try {
+      const devices = await webrtcModule.mediaDevices.enumerateDevices();
+      if (Array.isArray(devices)) {
+        for (const d of devices) {
+          if (d.kind === 'audioinput' || d.kind === 'audiooutput') {
+            inputs.push({
+              name: d.label || d.deviceId || 'Audio Device',
+              type: d.kind,
+              uid: d.deviceId || '',
+            });
+          }
+        }
+      }
+    } catch (webrtcErr) {
+      // ignore
+    }
+  }
+
+  // 2. Check native ExponentAV getAvailableInputs
+  if (ExponentAV && typeof ExponentAV.getAvailableInputs === 'function') {
+    try {
+      const avInputs: ConnectedAudioDevice[] = (await ExponentAV.getAvailableInputs()) || [];
+      if (Array.isArray(avInputs) && avInputs.length > 0) {
+        inputs = [...inputs, ...avInputs];
+      }
+    } catch (avErr) {
+      // ignore
+    }
+  }
+
+  try {
     // Check for Bluetooth Neckband / Earbuds / Headset
     const bluetoothDevice = inputs.find((d) => {
       const type = (d.type || '').toLowerCase();
       const name = (d.name || '').toLowerCase();
       return (
         type.includes('bluetooth') ||
+        type.includes('sco') ||
         name.includes('bluetooth') ||
         name.includes('neckband') ||
         name.includes('buds') ||
@@ -78,9 +118,11 @@ export async function detectAudioDevices(): Promise<AudioDeviceStatus> {
       return (
         type === 'microphonewired' ||
         type.includes('wired') ||
+        type.includes('headset') ||
         name.includes('headset') ||
         name.includes('earphone') ||
-        name.includes('headphone')
+        name.includes('headphone') ||
+        name.includes('wired')
       );
     });
 

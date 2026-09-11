@@ -214,13 +214,13 @@ class WebRTCService {
       // 2. Hardware audio mode initialization for background persistence
       try {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false, // Prevents expo-av from holding an active mic sidetone loopback
+          allowsRecordingIOS: true, // Enables hardware microphone recording across devices
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false,
           shouldDuckAndroid: false,
           staysActiveInBackground: true,
         });
-        console.log('📱 Hardware AudioMode active (staysActiveInBackground: true, no loopback)');
+        console.log('📱 Hardware AudioMode active (staysActiveInBackground: true, recording: true)');
       } catch (e: any) {
         console.warn('AudioMode init notice:', e.message);
       }
@@ -616,7 +616,7 @@ class WebRTCService {
     try {
       if (route === 'speaker') {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
+          allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: false, // Force Speakerphone
           shouldDuckAndroid: false,
@@ -625,7 +625,7 @@ class WebRTCService {
         console.log('🔊 Hardware audio routed to: LOUDSPEAKER');
       } else if (route === 'earpiece') {
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
+          allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
           playThroughEarpieceAndroid: true, // Phone top ear speaker
           shouldDuckAndroid: false,
@@ -633,15 +633,27 @@ class WebRTCService {
         });
         console.log('📱 Hardware audio routed to: EARPIECE');
       } else {
-        // Bluetooth / Headset default: allow Android OS to prioritize Bluetooth SCO / A2DP
+        // Bluetooth / Headset: Turning off speakerphone (playThroughEarpieceAndroid: true)
+        // allows Android OS to route audio output & mic to connected wired earphone or Bluetooth SCO
         await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false, // Prevents earphone mic sidetone from echoing back into ear
+          allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
-          playThroughEarpieceAndroid: false,
+          playThroughEarpieceAndroid: true,
           shouldDuckAndroid: false,
           staysActiveInBackground: true,
         });
-        console.log('🎧 Hardware audio routed to: EARPHONE / BLUETOOTH (Echo/Sidetone eliminated)');
+
+        // Set preferred audio hardware mic to headset if available
+        try {
+          const deviceStatus = await detectAudioDevices();
+          if (deviceStatus.headsetUid) {
+            await setPreferredAudioInput(deviceStatus.headsetUid);
+          }
+        } catch (devErr) {
+          // ignore
+        }
+
+        console.log('🎧 Hardware audio routed to: EARPHONE / BLUETOOTH');
       }
     } catch (e: any) {
       console.warn('Could not set audio route mode:', e.message);
